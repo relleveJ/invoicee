@@ -274,7 +274,7 @@
             <button type="submit" class="btn btn-primary">
                 <i class="fas fa-save me-2"></i>Save Invoice
             </button>
-            <button type="button" class="btn btn-outline-secondary ms-2" id="live-pdf-preview-btn">Download PDF</button>
+            <button type="button" class="btn btn-outline-secondary ms-2" id="live-pdf-preview-btn">PREVIEW PDF</button>
             <!-- Download button removed from page; use modal Download instead -->
             <a href="{% url 'invoice_list' %}" class="btn btn-secondary">Cancel</a>
         </form>
@@ -362,6 +362,11 @@
         const t = document.querySelector('input[name=csrfmiddlewaretoken]');
         return t ? t.value : '';
     }
+
+    // Expose page action globally so preview/download handlers can read it
+    window.PAGE_ACTION = "{{ action|escapejs }}";
+    // URL to redirect to after successful download
+    window.INVOICE_LIST_URL = "{% url 'invoice_list' %}";
 
     // Real-time calculations
     function calculateTotals() {
@@ -472,6 +477,9 @@
         const liveBtn = document.getElementById('live-pdf-preview-btn');
         if (liveBtn) liveBtn.addEventListener('click', previewOrDownload);
 
+        // Page action (Create vs Edit) from server
+        const PAGE_ACTION = "{{ action|escapejs }}";
+
         // Business photo upload removed from invoice flow; edits should be made
         // via the Business Profile page. No client-side file handling here.
         // on load, wire business select preview population
@@ -569,6 +577,19 @@
                 const bPhone = (document.getElementById('id_business_phone_text') || {}).value || '';
                 const bAddr = (document.getElementById('id_business_address_text') || {}).value || '';
                 data.business = { id: bId, business_name: bName, email: bEmail, phone: bPhone, address: bAddr };
+
+                // If a business preview image is visible (left preview or sidebar), include
+                // it as a data URL or absolute src so the server can render it in previews/PDFs.
+                try {
+                    const leftPreviewImg = document.getElementById('business-left-preview');
+                    const sidebarPreviewImg = document.getElementById('preview-business-logo');
+                    let logoSrc = '';
+                    if (leftPreviewImg && leftPreviewImg.src && leftPreviewImg.style.display !== 'none') logoSrc = leftPreviewImg.src;
+                    else if (sidebarPreviewImg && sidebarPreviewImg.src && sidebarPreviewImg.style.display !== 'none') logoSrc = sidebarPreviewImg.src;
+                    if (logoSrc) {
+                        data.business.photo_data_url = logoSrc;
+                    }
+                } catch (e) { /* ignore */ }
 
                 // Business photo upload removed from invoice flow; do not include files in preview payload.
             } catch (e) {}
@@ -757,28 +778,36 @@
             }
         }
 
-        // When user clicks the top-level Download PDF button: try downloading PDF first, fall back to preview
+        // When user clicks the top-level Preview button: attempt a background
+        // PDF export but prefer showing the preview modal. Do NOT auto-save
+        // on the Create page to avoid creating an invoice just by previewing.
         async function previewOrDownload() {
             const btn = document.getElementById('live-pdf-preview-btn');
             if (btn) btn.disabled = true;
             console.log('previewOrDownload: clicked');
             try {
                 const data = await serializePreviewData();
+                // Try to download a PDF in the background (servers that support
+                // rendering preview-to-pdf will return a PDF blob). If successful,
+                // the user will receive a download without changing form state.
                 const ok = await downloadPdfFromData(data);
                 if (ok) {
                     console.log('PDF downloaded via XHR');
                     return;
                 }
-                // If XHR didn't return a PDF, show the HTML preview first (if any).
-                // This makes the UI responsive even when the server returns HTML.
+
+                // Otherwise show the preview modal (HTML or PDF) so the user can
+                // inspect and decide whether to save. This avoids creating the
+                // invoice implicitly during preview on the Create page.
                 try {
                     await livePdfPreview(data);
                 } catch (e) {
                     console.warn('livePdfPreview failed', e);
                 }
 
-                // As a last resort, try the form POST fallback in a new tab/window
-                // which some servers handle as a download.
+                // As a last resort, try the form POST fallback in a hidden iframe
+                // which some servers handle as a download. This is non-destructive
+                // and does not auto-save the invoice record.
                 try {
                     console.log('previewOrDownload: attempting fallback form submit');
                     const fallbackOk = await fallbackSubmitFormPreview();
@@ -908,9 +937,159 @@
         }
     }
 
+    // Submit the current invoice form via Fetch (multipart FormData) and open the
+    // generated PDF for the newly created invoice using the same URL the View
+    // page uses (/invoices/<pk>/pdf/). Expects the server to return JSON {ok:true, pk}.
+    async function submitFormAndOpenPdf() {
+        const form = document.getElementById('invoice-form');
+        if (!form) throw new Error('Invoice form not found');
+        const btn = document.getElementById('live-pdf-preview-btn');
+        if (btn) btn.disabled = true;
+        try {
+            const fd = new FormData(form);
+            fd.set('download_after_save', '1');
+            // include CSRF automatically with cookie; also set header for server detection
+            const resp = await fetch(form.action, {
+                method: 'POST',
+                body: fd,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                credentials: 'same-origin'
+            });
+            if (!resp.ok) {
+                const text = await resp.text();
+                // show server response (likely form with errors) in modal so user can inspect
+                try { showPreviewModalWithHtml(text, null); } catch(e){}
+                throw new Error('Save failed: ' + resp.status);
+            }
+
+            const ctype = (resp.headers.get('Content-Type') || '').toLowerCase();
+            let pk = null;
+            if (ctype.indexOf('application/json') !== -1) {
+                const j = await resp.json();
+                if (!j || !j.ok || !j.pk) {
+                    // if server indicated failure via JSON, show message
+                    try { alert('Save failed.'); } catch(e){}
+                    return null;
+                }
+                pk = j.pk;
+            } else {
+                // Server returned HTML (likely validation errors). If it contains
+                // a rendered `#invoice-form`, replace the current form in-place
+                // so field-level errors appear inline. Otherwise show HTML in modal.
+                const txt = await resp.text();
+                try {
+                    const hasForm = /<form[^>]+id=(['\"])invoice-form\1/i.test(txt) || /id=(['\"])invoice-form\1/i.test(txt);
+                    if (hasForm) {
+                        replaceInvoiceFormWithHtml(txt);
+                        // detect duplicate invoice hints and show friendly alert
+                        if (txt.toLowerCase().indexOf('invoice number already exists') !== -1 || txt.toLowerCase().indexOf('already exists') !== -1) {
+                            try { alert('Invoice number already exists. Please choose another invoice number.'); } catch(e){}
+                        }
+                        return null;
+                    } else {
+                        try { showPreviewModalWithHtml(txt, null); } catch(e){}
+                        return null;
+                    }
+                } catch (e) {
+                    console.warn('submitFormAndOpenPdf: failed to replace form from server HTML', e);
+                    try { showPreviewModalWithHtml(txt, null); } catch(_){ }
+                    return null;
+                }
+            }
+            // After saving, request the canonical PDF using wkhtmltopdf and force a download.
+            const url = `/invoices/${pk}/pdf/?format=pdf&backend=wkhtmltopdf`;
+            try {
+                const r = await fetch(url, { credentials: 'same-origin' });
+                if (r && r.ok) {
+                    const ct = (r.headers.get('Content-Type') || '').toLowerCase();
+                    if (ct.indexOf('pdf') !== -1) {
+                        const blob = await r.blob();
+                        const filename = (_lastPreviewData && _lastPreviewData.filename) || (document.getElementById('id_invoice_number') && document.getElementById('id_invoice_number').value) || ('invoice-' + pk);
+                        const blobUrl = URL.createObjectURL(blob);
+                        const a = document.createElement('a'); a.href = blobUrl; a.download = filename + '.pdf'; document.body.appendChild(a); a.click(); a.remove();
+                        setTimeout(()=>{ try{ URL.revokeObjectURL(blobUrl); }catch(e){} },1500);
+                        // After download starts, redirect to invoice list so user returns to index
+                        try {
+                            setTimeout(function(){ window.location = window.INVOICE_LIST_URL; }, 700);
+                        } catch (e) { console.warn('redirect after download failed', e); }
+                    } else {
+                        // Non-PDF returned; show result in preview modal instead of saving HTML as PDF
+                        const txt = await r.text();
+                        try { showPreviewModalWithHtml(txt, _lastPreviewData); } catch(e){ console.warn('showPreviewModalWithHtml failed', e); }
+                    }
+                } else {
+                    // show server response in modal if available
+                    try { const txt = await r.text(); showPreviewModalWithHtml(txt, _lastPreviewData); } catch(e){ window.open(`/invoices/${pk}/pdf/`, '_blank'); }
+                }
+            } catch (e) {
+                console.warn('submitFormAndOpenPdf: fetch PDF failed, opening in new tab', e);
+                window.open(`/invoices/${pk}/pdf/`, '_blank');
+            }
+        } finally {
+            if (btn) btn.disabled = false;
+        }
+    }
+
     // Modal helpers
     let _lastPreviewData = null;
     let _lastPreviewHtml = null;
+
+    // Replace the current invoice form with server-rendered HTML (used to show
+    // validation errors inline after an AJAX save attempt). Rewires listeners
+    // so live preview and totals continue to work.
+    function replaceInvoiceFormWithHtml(html) {
+        try {
+            const tmp = document.createElement('div');
+            tmp.innerHTML = html;
+            const newForm = tmp.querySelector('#invoice-form');
+            if (!newForm) return false;
+            const oldForm = document.getElementById('invoice-form');
+            if (!oldForm) return false;
+            // Replace the form node
+            oldForm.replaceWith(newForm);
+            // Re-run wiring for dynamically attached listeners and calculations
+            rewireInvoiceForm();
+            // Focus first form error if present
+            const firstError = document.querySelector('.is-invalid, .error, .field-error');
+            if (firstError && typeof firstError.focus === 'function') firstError.focus();
+            return true;
+        } catch (e) {
+            console.warn('replaceInvoiceFormWithHtml failed', e);
+            return false;
+        }
+    }
+
+    // Re-attach listeners and reinitialize totals/preview after replacing form
+    function rewireInvoiceForm() {
+        try {
+            // wiring item inputs and totals
+            try { wireItemInputs(); } catch (e) { console.warn('rewire: wireItemInputs failed', e); }
+            try { calculateTotals(); } catch (e) { console.warn('rewire: calculateTotals failed', e); }
+
+            // reattach preview button handler (use onclick to avoid duplicate listeners)
+            const liveBtn = document.getElementById('live-pdf-preview-btn');
+            if (liveBtn) liveBtn.onclick = previewOrDownload;
+
+            // reattach delete-selected
+            const delBtn = document.getElementById('delete-selected-btn');
+            if (delBtn) delBtn.onclick = function(){ if (!confirm('Delete selected items?')) return; try { deleteSelectedItems(); } catch (e) { console.warn('deleteSelectedItems failed', e); } };
+
+            // ensure modal download button still wired (it is global)
+            const modalDl = document.getElementById('modal-download-btn');
+            if (modalDl) modalDl.onclick = async function(){ try { if ((window.PAGE_ACTION || '').toLowerCase() === 'create') { await submitFormAndOpenPdf(); return; } } catch(e){ console.warn(e); } await modalDownloadHandler(); };
+
+            // re-populate preview client/business details if selects exist
+            const selClient = document.getElementById('id_client'); if (selClient) updatePreviewClientById(selClient.value || '');
+            const selBiz = document.getElementById('id_business_select'); if (selBiz) updatePreviewBusinessById(selBiz.value || '');
+
+            return true;
+        } catch (e) {
+            console.warn('rewireInvoiceForm failed', e);
+            return false;
+        }
+    }
     function showPreviewModalWithPdf(blob, filename) {
         const body = document.getElementById('invoice-preview-modal-body');
         if (!body) {
@@ -1115,66 +1294,73 @@
             if (okFresh) return;
         } catch (e) { console.warn('modalDownloadHandler: fresh download failed', e); }
 
+        // If we have a previously-cached blob URL for the preview, try to use it.
         if (_lastPreviewData && _lastPreviewData.blobUrl) {
-            const a = document.createElement('a');
-            a.href = _lastPreviewData.blobUrl;
-            a.download = _lastPreviewData.filename || 'invoice.pdf';
-            document.body.appendChild(a); a.click(); a.remove();
-            return;
+            try {
+                const a = document.createElement('a');
+                a.href = _lastPreviewData.blobUrl;
+                a.download = _lastPreviewData.filename || 'invoice.pdf';
+                document.body.appendChild(a); a.click(); a.remove();
+                return;
+            } catch (err) {
+                // Some browsers may consider a revoked blob URL invalid; attempt to re-create
+                // a fresh object URL by fetching the original blob and creating a new URL.
+                console.warn('modalDownloadHandler: direct blob download failed, attempting to recreate blob URL', err);
+                try {
+                    const resp = await fetch(_lastPreviewData.blobUrl);
+                    if (resp && resp.ok) {
+                        const blob = await resp.blob();
+                        const newUrl = URL.createObjectURL(blob);
+                        try {
+                            const a2 = document.createElement('a');
+                            a2.href = newUrl; a2.download = _lastPreviewData.filename || 'invoice.pdf';
+                            document.body.appendChild(a2); a2.click(); a2.remove();
+                        } finally {
+                            // revoke the recreated URL shortly after to avoid leaking memory
+                            setTimeout(() => { try { URL.revokeObjectURL(newUrl); } catch(e){} }, 1500);
+                        }
+                        return;
+                    }
+                } catch (e2) {
+                    console.warn('modalDownloadHandler: recreating blob URL failed', e2);
+                }
+            }
         }
+
         if (_lastPreviewData) {
             const ok = await downloadPdfFromData(_lastPreviewData);
             if (ok) return;
         }
+
         if (_lastPreviewHtml) {
             try {
-                // First attempt: print from the visible modal iframe (if same-origin)
-                const modalIframe = document.querySelector('#invoice-preview-modal-body iframe');
-                try {
-                    if (modalIframe && modalIframe.contentWindow) {
-                        modalIframe.contentWindow.focus();
-                        modalIframe.contentWindow.print();
-                        return;
-                    }
-                } catch (e) { console.warn('modal iframe print failed', e); }
-
-                // Second attempt: create a temporary offscreen iframe with only the preview HTML
-                try {
-                    const safeHtml = (_lastPreviewHtml || '').replace(/<script[\s\S]*?<\/script>/gi, '');
-                    const printable = '<!doctype html><html><head><meta charset="utf-8"><title>Print</title>' +
-                        '<style>html,body{height:100%;margin:0;padding:0;background:#fff;color:#000}</style></head><body>' + safeHtml + '</body></html>';
-                    const printIframe = document.createElement('iframe');
-                    // place offscreen so it doesn't interfere with UI
-                    printIframe.style.position = 'fixed';
-                    printIframe.style.width = '0';
-                    printIframe.style.height = '0';
-                    printIframe.style.left = '-9999px';
-                    printIframe.style.top = '0';
-                    printIframe.style.border = '0';
-                    // append and set srcdoc
-                    document.body.appendChild(printIframe);
+                // Instead of forcing a print dialog (which is intrusive), open the
+                // preview HTML in a new tab so the user can inspect and print/save
+                // manually. This avoids automatic print popups on the Create form.
+                const safeHtml = (_lastPreviewHtml || '').replace(/<script[\s\S]*?<\/script>/gi, '');
+                const printable = '<!doctype html><html><head><meta charset="utf-8"><title>Invoice Preview</title>' +
+                    '<style>html,body{height:100%;margin:0;padding:16px;background:#fff;color:#000;font-family:Arial,Helvetica,sans-serif}</style></head><body>' + safeHtml + '</body></html>';
+                const newWin = window.open('', '_blank');
+                if (newWin) {
                     try {
-                        printIframe.srcdoc = printable;
+                        newWin.document.open();
+                        newWin.document.write(printable);
+                        newWin.document.close();
+                        // Focus the new tab and let the user print/save via browser UI
+                        newWin.focus();
                     } catch (e) {
-                        // fallback to data URL if srcdoc not supported
-                        printIframe.src = 'data:text/html;charset=utf-8,' + encodeURIComponent(printable);
+                        // Fallback to data URL if direct document write fails
+                        const dataUrl = 'data:text/html;charset=utf-8,' + encodeURIComponent(printable);
+                        window.open(dataUrl, '_blank');
                     }
-                    printIframe.onload = function() {
-                        try {
-                            const pw = printIframe.contentWindow || printIframe.contentDocument.defaultView;
-                            if (pw) { pw.focus(); pw.print(); }
-                        } catch (ee) { console.warn('print iframe print failed', ee); }
-                        setTimeout(() => { try { printIframe.remove(); } catch(e){} }, 1000);
-                    };
                     return;
-                } catch (e) { console.warn('offscreen iframe print failed', e); }
-                // as a fallback, open a minimal printable window, trigger print, then close it
-                // Popup/window fallback removed to avoid new tabs — report to user
-                console.warn('Popup print fallback suppressed to avoid opening new tabs');
-                alert('Printing from modal failed. Try enabling interaction in the preview or save the preview and print locally.');
-                return;
+                } else {
+                    // If popup blocked, fall back to alert with instructions
+                    alert('Preview opened was blocked by the browser. Please enable popups for this site to view and print the preview.');
+                    return;
+                }
             } catch (e) {
-                console.warn('Failed to print preview', e);
+                console.warn('Failed to open preview tab', e);
             }
         }
         alert('No PDF available. Try saving or printing the preview.');
@@ -1201,6 +1387,17 @@
     document.addEventListener('DOMContentLoaded', function() {
         const modalDl = document.getElementById('modal-download-btn');
         if (modalDl) modalDl.addEventListener('click', async function() {
+            // If we are creating a new invoice, offer Save & Download from the modal
+            try {
+                if ((window.PAGE_ACTION || '').toLowerCase() === 'create') {
+                    // Attempt to save via AJAX and download canonical PDF; submitFormAndOpenPdf
+                    // will render validation HTML in the modal if save fails.
+                    await submitFormAndOpenPdf();
+                    return;
+                }
+            } catch (e) {
+                console.warn('Save-and-download from modal failed, falling back to modal download', e);
+            }
             await modalDownloadHandler();
         });
     });
@@ -1356,10 +1553,16 @@
                 if (!data) return;
                 // populate preview logo if present (sidebar) and the new left-side preview
                 try {
-                    if (data.logo_url && previewLogo) { previewLogo.src = data.logo_url; previewLogo.style.display = 'inline-block'; }
                     const leftPreview = document.getElementById('business-left-preview');
                     const inlinePhotoBlock = document.getElementById('business-photo-preview');
-                    if (leftPreview && data.logo_url) { leftPreview.src = data.logo_url; leftPreview.style.display = 'inline-block'; }
+                    if (data.logo_url) {
+                        if (previewLogo) { previewLogo.src = data.logo_url; previewLogo.style.display = 'inline-block'; }
+                        if (leftPreview) { leftPreview.src = data.logo_url; leftPreview.style.display = 'inline-block'; }
+                    } else {
+                        // clear any previous logo to avoid showing stale images
+                        if (previewLogo) { previewLogo.src = ''; previewLogo.style.display = 'none'; }
+                        if (leftPreview) { leftPreview.src = ''; leftPreview.style.display = 'none'; }
+                    }
                     // hide the old inline photo preview (file upload area)
                     if (inlinePhotoBlock) { inlinePhotoBlock.style.display = 'none'; inlinePhotoBlock.src = ''; }
                 } catch (e) {}
@@ -1400,13 +1603,15 @@
                             if (idPhone) idPhone.value = phone;
                             if (idAddr) idAddr.value = addr;
                             if (idBiz) idBiz.value = businessId;
-                            if (previewLogo && logo) { previewLogo.src = logo; previewLogo.style.display = 'inline-block'; }
-                            try {
-                                const leftPreview = document.getElementById('business-left-preview');
-                                const inlinePhotoBlock = document.getElementById('business-photo-preview');
-                                if (leftPreview && logo) { leftPreview.src = logo; leftPreview.style.display = 'inline-block'; }
-                                if (inlinePhotoBlock) { inlinePhotoBlock.style.display = 'none'; inlinePhotoBlock.src = ''; }
-                            } catch(e) {}
+                            if (logo) {
+                                if (previewLogo) { previewLogo.src = logo; previewLogo.style.display = 'inline-block'; }
+                                try { const leftPreview = document.getElementById('business-left-preview'); if (leftPreview) { leftPreview.src = logo; leftPreview.style.display = 'inline-block'; } } catch(e) {}
+                            } else {
+                                // clear stale images
+                                if (previewLogo) { previewLogo.src = ''; previewLogo.style.display = 'none'; }
+                                try { const leftPreview = document.getElementById('business-left-preview'); if (leftPreview) { leftPreview.src = ''; leftPreview.style.display = 'none'; } } catch(e) {}
+                            }
+                            try { const inlinePhotoBlock = document.getElementById('business-photo-preview'); if (inlinePhotoBlock) { inlinePhotoBlock.style.display = 'none'; inlinePhotoBlock.src = ''; } } catch(e) {}
                             if (showEdit) showEdit.style.display = 'block';
                             try { const d = buildPreviewDataSync(); renderMiniPreview(d); } catch(e) { /* ignore */ }
                         }

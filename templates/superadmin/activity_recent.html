@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+  <h2>Recent Activity</h2>
+  {% if logs_missing %}
+    <div class="alert alert-warning">Activity log table not found. Run the management command to create the table.</div>
+  {% endif %}
+  <form method="get" class="row g-2 mb-2">
+    <div class="col-6"><input type="text" name="q" class="form-control" placeholder="Filter activity or invoice" value="{{ q }}"></div>
+    <div class="col-4"><input type="text" name="user" class="form-control" placeholder="User ID" value="{{ user_filter }}"></div>
+    <div class="col-2"><button class="btn btn-outline-secondary w-100" type="submit">Filter</button></div>
+  </form>
+  <div class="table-responsive">
+    <table class="table table-sm">
+      <thead><tr><th>Time</th><th>User</th><th>Activity</th><th>Invoice</th></tr></thead>
+      <tbody>
+      {% for log in logs_page %}
+        <tr>
+          <td>{{ log.timestamp }}</td>
+          <td>{{ log.user_id }}</td>
+          <td>{{ log.activity_type }}</td>
+          <td>{% if log.related_invoice %}<a href="{% url 'invoice_detail' log.related_invoice %}">{{ log.related_invoice }}</a>{% else %}-{% endif %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4">No activity logs.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <nav>
+    <ul class="pagination">
+      {% if logs_page.has_previous %}
+        <li class="page-item"><a class="page-link" href="?q={{ q }}&user={{ user_filter }}&page={{ logs_page.previous_page_number }}">Prev</a></li>
+      {% endif %}
+      <li class="page-item disabled"><span class="page-link">Page {{ logs_page.number }} of {{ logs_page.paginator.num_pages }}</span></li>
+      {% if logs_page.has_next %}
+        <li class="page-item"><a class="page-link" href="?q={{ q }}&user={{ user_filter }}&page={{ logs_page.next_page_number }}">Next</a></li>
+      {% endif %}
+    </ul>
+  </nav>
+</div>
+{% endblock %}

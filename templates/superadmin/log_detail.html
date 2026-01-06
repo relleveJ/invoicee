@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center">
+    <h3>Activity Log #{{ log.activity_id }}</h3>
+    <a href="{% url 'superadmin_dashboard' %}" class="btn btn-secondary">Back</a>
+  </div>
+  <div class="card mt-3">
+    <div class="card-body">
+      <dl class="row">
+        <dt class="col-sm-3">Activity ID</dt>
+        <dd class="col-sm-9">{{ log.activity_id }}</dd>
+
+        <dt class="col-sm-3">User ID</dt>
+        <dd class="col-sm-9">{{ log.user_id }}</dd>
+
+        <dt class="col-sm-3">Activity Type</dt>
+        <dd class="col-sm-9">{{ log.activity_type }}</dd>
+
+        <dt class="col-sm-3">Timestamp</dt>
+        <dd class="col-sm-9">{{ log.timestamp }}</dd>
+
+        <dt class="col-sm-3">Related Invoice</dt>
+        <dd class="col-sm-9">{{ log.related_invoice }}</dd>
+      </dl>
+    </div>
+  </div>
+</div>
+{% endblock %}

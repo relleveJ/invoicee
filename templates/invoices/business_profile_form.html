@@ -2,53 +2,7 @@
 
 {% block content %}
 <div class="container mt-4">
-  <h2>Business Profile</h2>
-  {% if businesses %}
-    <div class="mb-3">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <h5 class="m-0">Existing Business Profiles</h5>
-        <div>
-          <button id="bp-add-profile" type="button" class="btn btn-sm btn-primary">Add Profile</button>
-        </div>
-      </div>
-      <div class="list-group mb-2" style="max-height:420px; overflow:auto; padding-right:6px;">
-        <table class="table table-striped mb-0" style="table-layout:fixed; width:100%;">
-          <colgroup>
-            <col style="width:40%;">
-            <col style="width:30%;">
-            <col style="width:20%;">
-            <col style="width:10%;">
-          </colgroup>
-          <thead>
-            <tr>
-              <th>Business</th>
-              <th>Email</th>
-              <th>Phone</th>
-              <th class="text-end">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for b in businesses %}
-            <tr class="list-group-item align-middle" data-pk="{{ b.pk }}">
-              <td><strong>{{ b.business_name }}</strong></td>
-              <td class="text-muted">{{ b.email }}</td>
-              <td class="text-muted">{{ b.phone }}</td>
-              <td class="text-end">
-                <a href="{% url 'business_profile_setup' %}?id={{ b.pk }}" class="btn btn-sm btn-outline-primary me-2">Edit</a>
-                <form method="post" action="{% url 'business_profile_setup' %}" style="display:inline;">
-                  {% csrf_token %}
-                  <input type="hidden" name="delete_business_pk" value="{{ b.pk }}">
-                  <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
-                </form>
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  {% endif %}
-
+  
   <style>
     /* Two-column responsive form for medium+ screens */
     .two-col-form .mb-3 { width:100%; box-sizing: border-box; }
@@ -62,26 +16,74 @@
     /* Prevent the default .list-group-item background/padding from breaking the table layout */
     .table .list-group-item { background: transparent; }
   </style>
-
+  <div id="bp-form-container" style="display: {% if form.instance.pk or form.errors %}block{% else %}none{% endif %};">
   <form method="post" enctype="multipart/form-data" class="two-col-form">
     {% csrf_token %}
-    <div id="bp-form-fields" style="display:none">
-      {% for field in form %}
-        <div class="mb-3">
-          {{ field.label_tag }}
-          {{ field }}
-          {{ field.errors }}
-        </div>
-      {% endfor %}
-      <div id="business-logo-preview-container" style="margin-top:8px; display:none;">
-        <label class="form-label">Current Logo Preview</label>
-        <div>
-          <img id="business-logo-preview" src="" alt="Business logo" style="max-width:160px; max-height:100px; border-radius:4px;" />
+    {# Show form fields by default. When editing an existing profile the form.instance.pk will be set. #}
+    <div id="bp-form-fields">
+      <div class="mb-3 full-width">
+        <label class="form-label">Business Name</label>
+        {{ form.business_name }}
+        {{ form.business_name.errors }}
+      </div>
+
+      <div class="mb-3" style="max-width:360px;">
+        <label class="form-label">Logo</label>
+        {{ form.logo }}
+        {{ form.logo.errors }}
+        <div id="business-logo-preview-container" style="margin-top:8px; display:none;">
+          <label class="form-label">Current Logo Preview</label>
+          <div>
+            <img id="business-logo-preview" src="" alt="Business logo" style="max-width:160px; max-height:100px; border-radius:4px;" />
+          </div>
         </div>
       </div>
+
+      <div class="mb-3 full-width">
+        <label class="form-label">Address</label>
+        {{ form.address }}
+        {{ form.address.errors }}
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">City</label>
+        {{ form.city }}
+        {{ form.city.errors }}
+      </div>
+      <div class="mb-3">
+        <label class="form-label">State</label>
+        {{ form.state }}
+        {{ form.state.errors }}
+      </div>
+      <div class="mb-3">
+        <label class="form-label">ZIP</label>
+        {{ form.zip_code }}
+        {{ form.zip_code.errors }}
+      </div>
+      <div class="mb-3 full-width">
+        <label class="form-label">Country</label>
+        {{ form.country }}
+        {{ form.country.errors }}
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">Email</label>
+        {{ form.email }}
+        {{ form.email.errors }}
+      </div>
+      <div class="mb-3">
+        <label class="form-label">Phone</label>
+        {{ form.phone }}
+        {{ form.phone.errors }}
+      </div>
+
       <div style="clear:both"></div>
       <button type="submit" class="btn btn-primary btn-save">Save</button>
+      {% if restored_from_trash and form.instance.pk %}
+        <a href="{% url 'business_cancel_restore' form.instance.pk %}" class="btn btn-outline-secondary ms-2">Cancel (Back to Trash)</a>
+      {% endif %}
     </div>
+
     <script>
       (function(){
         try{
@@ -90,37 +92,221 @@
           const fileInput = form.querySelector('input[type=file]');
           const previewContainer = document.getElementById('business-logo-preview-container');
           const previewImg = document.getElementById('business-logo-preview');
+
+          function showPreview(url){
+            if (!previewImg) return;
+            if (!url) { previewImg.src = ''; if (previewContainer) previewContainer.style.display='none'; return; }
+            previewImg.src = url; if (previewContainer) previewContainer.style.display='block';
+          }
+
+          // If server provided an existing logo on the instance, show it
+          {% if business_logo_url %}
+            try{
+              const url = "{{ business_logo_url|escapejs }}";
+              showPreview(url);
+            }catch(e){}
+          {% endif %}
+
           if (fileInput && previewImg) {
             fileInput.addEventListener('change', function(e){
               const f = e.target.files && e.target.files[0];
-              if (!f) { if (previewContainer) previewContainer.style.display='none'; previewImg.src=''; return; }
+              if (!f) { showPreview(''); return; }
               const url = URL.createObjectURL(f);
-              previewImg.src = url; if (previewContainer) previewContainer.style.display='block';
+              showPreview(url);
             });
-            // If the server already provided an existing logo (e.g., form initial), try to show it
-            const existing = form.querySelector('img');
           }
         }catch(e){console.warn(e)}
       })();
     </script>
-    <script>
-      // Toggle Add Profile fields
-      (function(){
-        try{
-          const addBtn = document.getElementById('bp-add-profile');
-          const fields = document.getElementById('bp-form-fields');
-          if (!addBtn || !fields) return;
-          addBtn.addEventListener('click', function(){
-            const showing = fields.style.display !== 'none';
-            fields.style.display = showing ? 'none' : '';
-            if (!showing) {
-              const first = fields.querySelector('input,textarea,select');
-              if (first) first.focus();
-            }
-          });
-        }catch(e){console.warn(e)}
-      })();
-    </script>
   </form>
+  </div>
+
+  <br>
+  <div class="d-flex flex-column flex-sm-row justify-content-between align-items-start align-items-sm-center my-3 gap-2">
+    <h2 class="mb-2 mb-sm-0">Business Profiles</h2>
+    <div class="d-flex gap-2 align-items-center">
+      <form method="get" class="row g-2 align-items-center" style="max-width:520px;" onsubmit="return false;">
+        <label class="col-auto col-form-label mb-0">Search</label>
+        <div class="col">
+          <input id="bp-search-input" type="text" name="q" value="{{ q|default:'' }}" class="form-control" placeholder="Search here...">
+        </div>
+      </form>
+      <button id="bp-add-btn" type="button" class="btn btn-primary">Add Business</button>
+    </div>
+  </div>
+
+    <div class="mb-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <div>
+        </div>
+      </div>
+      <div id="businesses-list-container" class="table-responsive mb-2">
+        <form id="bp-bulk-form" method="post" action="{% url 'business_bulk_action' %}">
+          {% csrf_token %}
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div>
+              <input type="checkbox" id="bp-select-all" /> <label for="bp-select-all" class="mb-0">Select all</label>
+            </div>
+            <div>
+              <button id="bp-trash-btn" type="submit" name="action" value="trash" class="btn btn-outline-danger">Move to Trash</button>
+              <a href="{% url 'business_trash_list' %}" class="btn btn-secondary ms-2">View Trash</a>
+            </div>
+          </div>
+          <table class="table table-striped mb-0" style="table-layout:fixed; width:100%;">
+            <colgroup>
+              <col style="width:4%;">
+              <col style="width:36%;">
+              <col style="width:30%;">
+              <col style="width:20%;">
+              <col style="width:10%;">
+            </colgroup>
+            <thead>
+              <tr>
+                <th><!-- checkbox column --></th>
+                <th>Business</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th class="text-end">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for b in businesses %}
+              <tr class="list-group-item align-middle" data-pk="{{ b.pk }}">
+                <td><input type="checkbox" name="selected_ids" value="{{ b.pk }}" class="bp-row-checkbox" /></td>
+                <td><strong>{{ b.business_name }}</strong></td>
+                <td class="text-muted">{{ b.email }}</td>
+                <td class="text-muted">{{ b.phone }}</td>
+                <td class="text-end">
+                  <a href="{% url 'business_profile_setup' %}?id={{ b.pk }}" class="btn btn-sm btn-outline-primary me-2">Edit</a>
+                  <button type="button" class="btn btn-sm btn-outline-danger bp-delete-btn" data-pk="{{ b.pk }}" data-url="{% url 'business_profile_setup' %}">Delete</button>
+                </td>
+              </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="5">{% if q %}No found{% else %}No business profiles yet.{% endif %}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </form>
+      </div>
+
+      {% if is_paginated %}
+      <nav aria-label="Business profiles pagination">
+        <ul class="pagination justify-content-center">
+          <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+            {% if page_obj.has_previous %}
+              <a class="page-link" href="?q={{ q }}&page={{ page_obj.previous_page_number }}" tabindex="-1">Previous</a>
+            {% else %}
+              <span class="page-link">Previous</span>
+            {% endif %}
+          </li>
+          {% for num in paginator.page_range %}
+            {% if num >= page_obj.number|add:-3 and num <= page_obj.number|add:3 %}
+              <li class="page-item {% if page_obj.number == num %}active{% endif %}"><a class="page-link" href="?q={{ q }}&page={{ num }}">{{ num }}</a></li>
+            {% endif %}
+          {% endfor %}
+          <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+            {% if page_obj.has_next %}
+              <a class="page-link" href="?q={{ q }}&page={{ page_obj.next_page_number }}">Next</a>
+            {% else %}
+              <span class="page-link">Next</span>
+            {% endif %}
+          </li>
+        </ul>
+      </nav>
+      {% endif %}
+
+    </div>
+  <script>
+    (function(){
+      const input = document.getElementById('bp-search-input');
+      if (!input) return;
+      let timer = null;
+      function fetchResults(q){
+        const params = new URLSearchParams();
+        if (q) params.set('q', q);
+        // reset to first page on new search
+        params.set('page', '1');
+        const url = window.location.pathname + '?' + params.toString();
+        fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+          .then(r => r.text())
+          .then(html => {
+            try{
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(html, 'text/html');
+              const newContainer = doc.getElementById('businesses-list-container');
+              const current = document.getElementById('businesses-list-container');
+              if (newContainer && current) {
+                current.innerHTML = newContainer.innerHTML;
+              }
+            }catch(e){console.warn(e)}
+          }).catch(e=>console.warn(e));
+      }
+      input.addEventListener('input', function(e){
+        const v = (e.target.value || '').trim();
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(()=>fetchResults(v), 300);
+      });
+    })();
+  </script>
+  <script>
+    (function(){
+      function getCookie(name) {
+        const v = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+        return v ? v.pop() : '';
+      }
+      document.querySelectorAll('.bp-delete-btn').forEach(btn => {
+        btn.addEventListener('click', function(){
+          const pk = this.dataset.pk;
+          const url = this.dataset.url;
+          if (!confirm('Delete this business profile? This cannot be undone.')) return;
+          const f = document.createElement('form');
+          f.method = 'POST'; f.action = url; f.style.display='none';
+          const csrf = document.createElement('input'); csrf.type='hidden'; csrf.name='csrfmiddlewaretoken'; csrf.value = getCookie('csrftoken'); f.appendChild(csrf);
+          const ih = document.createElement('input'); ih.type='hidden'; ih.name='delete_business_pk'; ih.value = pk; f.appendChild(ih);
+          document.body.appendChild(f);
+          f.submit();
+        });
+      });
+    })();
+  </script>
+  <script>
+    (function(){
+      const selectAll = document.getElementById('bp-select-all');
+      const form = document.getElementById('bp-bulk-form');
+      if (selectAll) {
+        selectAll.addEventListener('change', function(e){
+          const checked = !!e.target.checked;
+          document.querySelectorAll('.bp-row-checkbox').forEach(cb => cb.checked = checked);
+        });
+      }
+      if (form) {
+        form.addEventListener('submit', function(e){
+          const any = Array.from(document.querySelectorAll('.bp-row-checkbox')).some(cb => cb.checked);
+          if (!any) { e.preventDefault(); alert('Please select at least one item.'); return; }
+          const action = (e.submitter && e.submitter.value) || form.querySelector('button[name="action"]').value;
+          let msg = 'Are you sure you want to move the selected items to trash?';
+          if (action === 'delete') msg = 'This will permanently delete the selected items. This action cannot be undone. Continue?';
+          if (!confirm(msg)) { e.preventDefault(); }
+        });
+      }
+    })();
+  </script>
+  <script>
+    (function(){
+      const btn = document.getElementById('bp-add-btn');
+      const container = document.getElementById('bp-form-container');
+      if (!btn || !container) return;
+      btn.addEventListener('click', function(){
+        const isShown = container.style.display !== 'none';
+        container.style.display = isShown ? 'none' : 'block';
+        if (!isShown) {
+          const firstInput = container.querySelector('input, textarea, select');
+          if (firstInput) firstInput.focus();
+        }
+      });
+    })();
+  </script>
 </div>
 {% endblock %}

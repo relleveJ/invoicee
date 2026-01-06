@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+{% load tz %}
+
+{% block content %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Invoices - Trash</h2>
+    <a href="{% url 'invoice_list' %}" class="btn btn-secondary">Back to Invoices</a>
+  </div>
+
+  <form id="invoice-trash-form" method="post" action="{% url 'invoice_bulk_action' %}">{% csrf_token %}
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <div style="flex:1 1 auto;">
+          <div class="row g-2">
+            <div class="col-8 col-sm-6">
+              <input id="invoice-trash-search" type="text" name="q" value="{{ q|default:'' }}" class="form-control" placeholder="Search trashed invoices...">
+            </div>
+            <div class="col-auto">
+              <input type="checkbox" id="invoice-trash-select-all" /> <label for="invoice-trash-select-all">Select all</label>
+            </div>
+          </div>
+        </div>
+        <div>
+          <button type="submit" name="action" value="restore" class="btn btn-outline-success">Restore</button>
+          <button type="submit" name="action" value="delete" class="btn btn-danger ms-2">Delete Permanently</button>
+        </div>
+      </div>
+
+    <div class="table-responsive">
+      <table class="table table-striped">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Invoice #</th>
+            <th>Client</th>
+            <th>Deleted At</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for invoice in invoices %}
+          <tr>
+            <td><input type="checkbox" name="selected_ids" value="{{ invoice.pk }}" class="invoice-trash-row" /></td>
+            <td>{{ invoice.invoice_number }}</td>
+            <td>{{ invoice.client_name }}</td>
+            <td>{{ invoice.deleted_at|timezone:"Asia/Manila" }}</td>
+              <td class="text-end">
+                <a href="{% url 'invoice_trash_view' invoice.pk %}" class="btn btn-sm btn-outline-primary">View</a>
+              </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="5">Trash is empty.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </form>
+
+  {% if is_paginated %}
+  <nav aria-label="Invoices pagination">
+    <ul class="pagination justify-content-center">
+      <li class="page-item {% if not page_obj.has_previous %}disabled{% endif %}">
+        {% if page_obj.has_previous %}
+          <a class="page-link" href="?q={{ q }}&page={{ page_obj.previous_page_number }}" tabindex="-1">Previous</a>
+        {% else %}
+          <span class="page-link">Previous</span>
+        {% endif %}
+      </li>
+      {% for num in paginator.page_range %}
+        {% if num >= page_obj.number|add:-3 and num <= page_obj.number|add:3 %}
+          <li class="page-item {% if page_obj.number == num %}active{% endif %}"><a class="page-link" href="?q={{ q }}&page={{ num }}">{{ num }}</a></li>
+        {% endif %}
+      {% endfor %}
+      <li class="page-item {% if not page_obj.has_next %}disabled{% endif %}">
+        {% if page_obj.has_next %}
+          <a class="page-link" href="?q={{ q }}&page={{ page_obj.next_page_number }}">Next</a>
+        {% else %}
+          <span class="page-link">Next</span>
+        {% endif %}
+      </li>
+    </ul>
+  </nav>
+  {% endif %}
+
+  <script>
+    (function(){
+      const sel = document.getElementById('invoice-trash-select-all');
+      if (sel) sel.addEventListener('change', e => document.querySelectorAll('.invoice-trash-row').forEach(cb => cb.checked = e.target.checked));
+      const form = document.getElementById('invoice-trash-form');
+      if (form) form.addEventListener('submit', function(e){
+        const any = Array.from(document.querySelectorAll('.invoice-trash-row')).some(cb => cb.checked);
+        if (!any) { e.preventDefault(); alert('Please select at least one item.'); return; }
+        const action = (e.submitter && e.submitter.value) || form.querySelector('button[name="action"]').value;
+        let msg = action === 'delete' ? 'Permanently delete selected invoices? This cannot be undone.' : 'Restore selected invoices?';
+        if (!confirm(msg)) e.preventDefault();
+      });
+
+      // live search
+      const input = document.getElementById('invoice-trash-search');
+      if (!input) return;
+      let timer = null;
+      function fetchResults(q){
+        const params = new URLSearchParams();
+        if (q) params.set('q', q);
+        params.set('page', '1');
+        const url = window.location.pathname + '?' + params.toString();
+        fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+          .then(r => r.text())
+          .then(html => {
+            try{
+              const parser = new DOMParser();
+              const doc = parser.parseFromString(html, 'text/html');
+              const newContainer = doc.querySelector('.table-responsive');
+              const current = document.querySelector('.table-responsive');
+              if (newContainer && current) {
+                current.innerHTML = newContainer.innerHTML;
+              }
+            }catch(e){console.warn(e)}
+          }).catch(e=>console.warn(e));
+      }
+      input.addEventListener('input', function(e){
+        const v = (e.target.value || '').trim();
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(()=>fetchResults(v), 300);
+      });
+    })();
+  </script>
+</div>
+{% endblock %}

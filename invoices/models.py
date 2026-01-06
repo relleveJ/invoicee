@@ -19,6 +19,10 @@ class BusinessProfile(models.Model):
 	phone = models.CharField(max_length=50, blank=True)
 	created_at = models.DateTimeField(auto_now_add=True)
 
+	# Soft-delete support
+	is_deleted = models.BooleanField(default=False)
+	deleted_at = models.DateTimeField(null=True, blank=True)
+
 	def __str__(self):
 		return self.business_name
 
@@ -37,6 +41,10 @@ class Client(models.Model):
 	zip_code = models.CharField(max_length=20, blank=True)
 	country = models.CharField(max_length=100, blank=True)
 	created_at = models.DateTimeField(auto_now_add=True)
+
+	# Soft-delete support
+	is_deleted = models.BooleanField(default=False)
+	deleted_at = models.DateTimeField(null=True, blank=True)
 
 	def __str__(self):
 		return self.name
@@ -82,6 +90,10 @@ class Invoice(models.Model):
 	currency = models.CharField(max_length=8, default='USD')
 	created_at = models.DateTimeField(auto_now_add=True)
 
+	# Soft-delete support
+	is_deleted = models.BooleanField(default=False)
+	deleted_at = models.DateTimeField(null=True, blank=True)
+
 	def __str__(self):
 		return f"{self.invoice_number} - {self.client}"
 
@@ -122,6 +134,98 @@ class AdClick(models.Model):
 
 	def __str__(self):
 		return f"{self.ad_identifier} @ {self.timestamp}"
+
+
+class BusinessProfileTrash(models.Model):
+	"""Archive table for trashed BusinessProfile records."""
+	original_id = models.IntegerField(null=True, blank=True)
+	user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+	business_name = models.CharField(max_length=200)
+	logo_name = models.CharField(max_length=500, blank=True)
+	address = models.TextField(blank=True)
+	city = models.CharField(max_length=100, blank=True)
+	state = models.CharField(max_length=100, blank=True)
+	zip_code = models.CharField(max_length=20, blank=True)
+	country = models.CharField(max_length=100, blank=True)
+	email = models.EmailField(blank=True)
+	phone = models.CharField(max_length=50, blank=True)
+	created_at = models.DateTimeField(null=True, blank=True)
+	deleted_at = models.DateTimeField(auto_now_add=True)
+
+	def __str__(self):
+		return f"Trashed Business: {self.business_name}"
+
+
+class ClientTrash(models.Model):
+	original_id = models.IntegerField(null=True, blank=True)
+	user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+	name = models.CharField(max_length=200)
+	email = models.EmailField(blank=True)
+	phone = models.CharField(max_length=50, blank=True)
+	address = models.TextField(blank=True)
+	street = models.CharField(max_length=200, blank=True)
+	city = models.CharField(max_length=100, blank=True)
+	state = models.CharField(max_length=100, blank=True)
+	zip_code = models.CharField(max_length=20, blank=True)
+	country = models.CharField(max_length=100, blank=True)
+	created_at = models.DateTimeField(null=True, blank=True)
+	deleted_at = models.DateTimeField(auto_now_add=True)
+
+	def __str__(self):
+		return f"Trashed Client: {self.name}"
+
+
+class InvoiceTrash(models.Model):
+	original_id = models.IntegerField(null=True, blank=True)
+	user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+	client_id = models.IntegerField(null=True, blank=True)
+	client_name = models.CharField(max_length=200, blank=True)
+	client_email = models.EmailField(blank=True)
+	client_phone = models.CharField(max_length=50, blank=True)
+	client_address = models.TextField(blank=True)
+
+	business_name = models.CharField(max_length=200, blank=True)
+	business_email = models.EmailField(blank=True)
+	business_phone = models.CharField(max_length=50, blank=True)
+	business_address = models.TextField(blank=True)
+	business_logo_name = models.CharField(max_length=500, blank=True)
+
+	invoice_number = models.CharField(max_length=50)
+	invoice_date = models.DateField(null=True, blank=True)
+	due_date = models.DateField(null=True, blank=True)
+	status = models.CharField(max_length=20, blank=True)
+	tax_rate = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal('0.00'))
+	discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+	subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+	tax_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+	total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal('0.00'))
+	notes = models.TextField(blank=True)
+	payment_terms = models.TextField(blank=True)
+	currency = models.CharField(max_length=8, default='USD')
+	items = models.JSONField(null=True, blank=True)
+	created_at = models.DateTimeField(null=True, blank=True)
+	deleted_at = models.DateTimeField(auto_now_add=True)
+
+	def __str__(self):
+		return f"Trashed Invoice: {self.invoice_number}"
+
+
+class UsersActivityLog(models.Model):
+	"""Unmanaged model mapping to existing PostgreSQL table `users_activity_logs`.
+	Columns expected: activity_id, user_id, activity_type, timestamp, related_invoice
+	"""
+	activity_id = models.BigIntegerField(primary_key=True)
+	user_id = models.IntegerField(db_index=True)
+	activity_type = models.CharField(max_length=200)
+	timestamp = models.DateTimeField()
+	related_invoice = models.CharField(max_length=200, null=True, blank=True)
+
+	class Meta:
+		db_table = 'users_activity_logs'
+		managed = False
+
+	def __str__(self):
+		return f"{self.activity_type} by {self.user_id} @ {self.timestamp}"
 
 
 # Signals to keep invoice totals up to date

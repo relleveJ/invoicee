@@ -10,6 +10,17 @@ class BusinessProfileForm(forms.ModelForm):
     class Meta:
         model = BusinessProfile
         fields = ['business_name', 'logo', 'address', 'city', 'state', 'zip_code', 'country', 'email', 'phone']
+        widgets = {
+            'business_name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Business name (required)'}),
+            'logo': forms.ClearableFileInput(attrs={'class': 'form-control'}),
+            'address': forms.Textarea(attrs={'class': 'form-control', 'rows': 2, 'placeholder': 'Street, City, State, ZIP'}),
+            'city': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'City'}),
+            'state': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'State'}),
+            'zip_code': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'ZIP / Postal code'}),
+            'country': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Country'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control', 'placeholder': 'contact@example.com'}),
+            'phone': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Phone (optional)'}),
+        }
 
 
 class ClientForm(forms.ModelForm):

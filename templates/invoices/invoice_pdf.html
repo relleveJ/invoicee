@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+{% load tz %}
 <html>
 <head>
     <meta charset="UTF-8">
@@ -65,7 +66,7 @@
 
         <div class="invoice-info">
             <h1>INVOICE</h1>
-            <p><small>Created: {% if invoice.created_at %}{{ invoice.created_at }}{% else %}{{ now }}{% endif %}</small></p>
+            <p><small>Created: {% if invoice.created_at %}{{ invoice.created_at|timezone:"Asia/Manila" }}{% else %}{{ now|timezone:"Asia/Manila" }}{% endif %}</small></p>
             <p>
                 <strong>Invoice #:</strong> {{ invoice.invoice_number }}<br>
                 <strong>Date:</strong> {{ invoice.invoice_date }}<br>

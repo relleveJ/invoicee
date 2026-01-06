@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>All Invoices</h1>
+<form method="get">
+  <input type="text" name="q" value="{{ q }}" placeholder="Search" />
+  <input type="text" name="user" value="{{ user_filter }}" placeholder="User ID" />
+  <button type="submit">Filter</button>
+</form>
+<table>
+  <tr><th>Invoice #</th><th>User</th><th>Client</th><th>Date</th><th>Status</th><th>Total</th></tr>
+  {% for inv in invoices_page.object_list %}
+  <tr>
+    <td><a href="{% url 'invoice_detail' inv.pk %}">{{ inv.invoice_number }}</a></td>
+    <td>{{ inv.user.username }}</td>
+    <td>{% if inv.client_name %}{{ inv.client_name }}{% else %}{{ inv.client.name }}{% endif %}</td>
+    <td>{{ inv.invoice_date }}</td>
+    <td>{{ inv.status }}</td>
+    <td>{{ inv.total_amount }}</td>
+  </tr>
+  {% empty %}
+  <tr><td colspan="6">No invoices found.</td></tr>
+  {% endfor %}
+</table>
+<div>
+  {% if invoices_page.has_previous %}<a href="?page={{ invoices_page.previous_page_number }}">Prev</a>{% endif %}
+  Page {{ invoices_page.number }} of {{ invoices_page.paginator.num_pages }}
+  {% if invoices_page.has_next %}<a href="?page={{ invoices_page.next_page_number }}">Next</a>{% endif %}
+</div>
+{% endblock %}

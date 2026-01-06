@@ -121,6 +121,13 @@
                                 <i class="fas fa-file-invoice me-2"></i> Invoices
                             </a>
                         </li>
+                        {% if user.is_superuser %}
+                        <li class="nav-item">
+                            <a class="nav-link {% if request.resolver_match.url_name == 'superadmin_dashboard' %}active{% endif %}" href="{% url 'superadmin_dashboard' %}">
+                                <i class="fas fa-user-shield me-2"></i> Superadmin
+                            </a>
+                        </li>
+                        {% endif %}
                         <li class="nav-item">
                             <a class="nav-link" href="{% url 'business_profile_setup' %}">
                                 <i class="fas fa-building me-2"></i> Business Profile

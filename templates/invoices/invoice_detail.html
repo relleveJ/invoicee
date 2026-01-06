@@ -1,4 +1,5 @@
 {% extends 'base.html' %}
+{% load tz %}
 
 {% block content %}
 <div class="container mt-4">
@@ -6,7 +7,12 @@
     <h2>Invoice {{ invoice.invoice_number }}</h2>
     <div>
       <a href="{% url 'generate_pdf' invoice.pk %}" class="btn btn-outline-secondary">Download PDF</a>
-      <a href="{% url 'invoice_edit' invoice.pk %}" class="btn btn-primary">Edit</a>
+      <a href="{% url 'invoice_list' %}" class="btn btn-secondary ms-2">Back to Invoice List</a>
+      {% if back_to_trash %}
+        <a href="{% url 'invoice_trash_list' %}" class="btn btn-secondary me-2">Back to Invoice Trash</a>
+      {% else %}
+        <a href="{% url 'invoice_edit' invoice.pk %}" class="btn btn-primary ms-2">Edit</a>
+      {% endif %}
     </div>
   </div>
 
@@ -16,8 +22,14 @@
         <div class="company-info" style="float:left;width:55%;">
           {% if invoice.business_logo %}
             <img src="{{ invoice.business_logo.url }}" alt="{{ invoice.business_name }}" style="max-width:150px;max-height:80px;object-fit:contain;" />
+          {% elif business and business.logo and business.logo.url %}
+            <img src="{{ business.logo.url }}" alt="{{ business.business_name }}" style="max-width:150px;max-height:80px;object-fit:contain;" />
           {% endif %}
-          {% if invoice.business_name %}<h2 style="margin:6px 0 6px 0;">{{ invoice.business_name }}</h2>{% endif %}
+          {% if invoice.business_name %}
+            <h2 style="margin:6px 0 6px 0;">{{ invoice.business_name }}</h2>
+          {% elif business and business.business_name %}
+            <h2 style="margin:6px 0 6px 0;">{{ business.business_name }}</h2>
+          {% endif %}
           <p style="margin:0;">
             {% if invoice.business_address %}{{ invoice.business_address }}<br>{% endif %}
             {% if invoice.business_email %}{{ invoice.business_email }}<br>{% endif %}
@@ -27,7 +39,7 @@
 
         <div class="invoice-info" style="float:right;width:40%;text-align:right;">
           <h1 style="margin:0;">INVOICE</h1>
-          <p style="margin:6px 0 0 0;"><small>Created: {% if invoice.created_at %}{{ invoice.created_at }}{% else %}{{ now }}{% endif %}</small></p>
+          <p style="margin:6px 0 0 0;"><small>Created: {% if invoice.created_at %}{{ invoice.created_at|timezone:"Asia/Manila" }}{% else %}{{ now|timezone:"Asia/Manila" }}{% endif %}</small></p>
           <p style="margin:8px 0 0 0;">
             <strong>Invoice #:</strong> {{ invoice.invoice_number }}<br>
             <strong>Date:</strong> {{ invoice.invoice_date }}<br>
@@ -58,7 +70,7 @@
           {% endif %}
         </p>
       </div>
-      <p class="text-muted small">Created: {{ invoice.created_at }}</p>
+      <p class="text-muted small">Created: {{ invoice.created_at|timezone:"Asia/Manila" }}</p>
 
       <h5>Items</h5>
       <table class="table">
