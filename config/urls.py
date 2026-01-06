@@ -50,6 +50,9 @@ urlpatterns = [
     # Superadmin
     path('superadmin/', views.superadmin_dashboard, name='superadmin_dashboard'),
     path('superadmin/users/<int:pk>/toggle-active/', views.toggle_user_active, name='toggle_user_active'),
+    path('superadmin/superadmins/', views.superadmin_manage_superadmins, name='superadmin_manage_superadmins'),
+    path('superadmin/superadmins/<int:user_id>/edit/', views.superadmin_edit_superadmin, name='superadmin_edit_superadmin'),
+    path('superadmin/superadmins/<int:user_id>/toggle-active/', views.superadmin_toggle_active_superadmin, name='superadmin_toggle_active_superadmin'),
     path('superadmin/logs/<int:activity_id>/', views.superadmin_log_detail, name='superadmin_log_detail'),
     path('superadmin/activity/', views.superadmin_activity, name='superadmin_activity'),
     path('superadmin/users/<int:user_id>/invoices/', views.superadmin_user_invoices, name='superadmin_user_invoices'),

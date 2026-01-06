@@ -1787,6 +1787,75 @@ def superadmin_clients(request):
 
 
 @login_required
+def superadmin_manage_superadmins(request):
+	if not getattr(request.user, 'is_superuser', False):
+		return HttpResponseForbidden('Forbidden')
+	User = get_user_model()
+	q = request.GET.get('q', '').strip()
+	page = int(request.GET.get('page', 1) or 1)
+
+	qs = User.objects.filter(is_superuser=True).order_by('-date_joined')
+	if q:
+		qs = qs.filter(Q(username__icontains=q) | Q(email__icontains=q) | Q(first_name__icontains=q) | Q(last_name__icontains=q))
+
+	paginator = Paginator(qs, 25)
+	page_obj = paginator.get_page(page)
+
+	return render(request, 'superadmin/manage_superadmins.html', {'page_obj': page_obj, 'q': q})
+
+
+@login_required
+def superadmin_edit_superadmin(request, user_id):
+	if not getattr(request.user, 'is_superuser', False):
+		return HttpResponseForbidden('Forbidden')
+	User = get_user_model()
+	target = get_object_or_404(User, pk=user_id, is_superuser=True)
+
+	if request.method == 'POST':
+		new_password = request.POST.get('new_password', '').strip()
+		confirm = request.POST.get('confirm_password', '').strip()
+		if not new_password:
+			messages.error(request, 'Password cannot be empty.')
+		elif new_password != confirm:
+			messages.error(request, 'Passwords do not match.')
+		else:
+			target.set_password(new_password)
+			target.save(update_fields=['password'])
+			messages.success(request, 'Password updated.')
+			return redirect(request.META.get('HTTP_REFERER') or reverse('superadmin_manage_superadmins'))
+
+	return render(request, 'superadmin/edit_superadmin.html', {'target': target})
+
+
+@login_required
+@require_POST
+def superadmin_toggle_active_superadmin(request, user_id):
+	if not getattr(request.user, 'is_superuser', False):
+		return HttpResponseForbidden('Forbidden')
+	User = get_user_model()
+	try:
+		target = User.objects.get(pk=user_id, is_superuser=True)
+	except User.DoesNotExist:
+		messages.error(request, 'Superadmin not found.')
+		return redirect(request.META.get('HTTP_REFERER') or reverse('superadmin_manage_superadmins'))
+
+	# Prevent deactivating self to avoid lockout
+	if target.pk == request.user.pk:
+		messages.error(request, 'You cannot deactivate your own account.')
+		return redirect(request.META.get('HTTP_REFERER') or reverse('superadmin_manage_superadmins'))
+
+	# Ensure at least one active superuser remains
+	active_supers = User.objects.filter(is_superuser=True, is_active=True).count()
+	if target.is_active and active_supers <= 1:
+		messages.error(request, 'Cannot deactivate the last active superadmin.')
+		return redirect(request.META.get('HTTP_REFERER') or reverse('superadmin_manage_superadmins'))
+
+	target.is_active = not target.is_active
+	target.save(update_fields=['is_active'])
+	return redirect(request.META.get('HTTP_REFERER') or reverse('superadmin_manage_superadmins'))
+
+
+@login_required
 def invoice_edit(request, pk):
 	invoice = get_invoice_or_404_for_user(pk, request.user)
 
