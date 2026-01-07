@@ -46,10 +46,6 @@ urlpatterns = [
     path('invoices/<int:pk>/email/', views.email_invoice, name='email_invoice'),
     path('invoices/preview/', views.invoice_live_preview, name='invoice_live_preview'),
     path('invoices/<int:pk>/preview-html/', views.invoice_live_preview, name='invoice_preview_html'),
-    # Template management (superuser)
-    path('invoices/templates/', views.invoice_templates_list, name='invoice_templates_list'),
-    path('invoices/templates/new/', views.invoice_template_edit, name='invoice_template_new'),
-    path('invoices/templates/<int:template_id>/edit/', views.invoice_template_edit, name='invoice_template_edit'),
     path('clients/<int:pk>/json/', views.client_detail_api, name='client_detail_api'),
     path('businesses/<int:pk>/json/', views.business_detail_api, name='business_detail_api'),
     # Superadmin
@@ -64,9 +60,15 @@ urlpatterns = [
     path('superadmin/invoices/', views.superadmin_all_invoices, name='superadmin_all_invoices'),
     path('superadmin/businesses/', views.superadmin_businesses, name='superadmin_businesses'),
     path('superadmin/clients/', views.superadmin_clients, name='superadmin_clients'),
+    path('superadmin/invoices/<int:pk>/delete/', views.superadmin_delete_invoice, name='superadmin_delete_invoice'),
+    path('superadmin/businesses/<int:pk>/delete/', views.superadmin_delete_business, name='superadmin_delete_business'),
+    path('superadmin/clients/<int:pk>/delete/', views.superadmin_delete_client, name='superadmin_delete_client'),
+    path('superadmin/users/<int:pk>/delete/', views.superadmin_delete_user, name='superadmin_delete_user'),
     
     # Ad Tracking
     path('api/track-ad/', views.track_ad_click, name='track_ad_click'),
+    # Backwards-compatible endpoint used by client-side code
+    path('track-ad-click/', views.track_ad_click, name='track_ad_click_legacy'),
     path('api/exchange-rate/', views.exchange_rate, name='exchange_rate'),
 ]
 

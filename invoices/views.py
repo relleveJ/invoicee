@@ -17,10 +17,14 @@ from django.views.decorators.clickjacking import xframe_options_exempt
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
+from zoneinfo import ZoneInfo
+import datetime
 import shutil
 import subprocess
 import tempfile
 import os
+import uuid
+from django.db import connection
 
 
 from .models import BusinessProfile, Client, Invoice, InvoiceItem, AdClick, BusinessProfileTrash, ClientTrash, InvoiceTrash, InvoiceTemplate
@@ -39,6 +43,34 @@ from .models import UsersActivityLog
 from django.db import DatabaseError, ProgrammingError
 from django.views.decorators.http import require_POST
 from django.http import HttpResponseForbidden
+
+
+@login_required
+def email_invoice(request, pk):
+	"""Render an email form (GET) and send a simple invoice email (POST).
+	This view is intentionally lightweight: it sends a plain email to the
+	invoice's client email and handles failures gracefully so it won't block
+	the main workflow during development.
+	"""
+	invoice = get_object_or_404(Invoice, pk=pk, user=request.user, is_deleted=False)
+	if request.method == 'POST':
+		subject = request.POST.get('subject', f'Invoice {getattr(invoice, "invoice_number", "")}')
+		message = request.POST.get('message', 'Please find your invoice attached.')
+		recipient = getattr(getattr(invoice, 'client', None), 'email', None)
+		if not recipient:
+			messages.error(request, 'Client does not have an email address.')
+			return redirect('invoice_detail', invoice.pk)
+		try:
+			from django.core.mail import EmailMessage
+			email = EmailMessage(subject=subject, body=message, to=[recipient])
+			# Do not attach files here to avoid blocking; keep simple and non-blocking.
+			email.send(fail_silently=False)
+			messages.success(request, 'Email sent to %s' % recipient)
+		except Exception as e:
+			messages.error(request, 'Failed to send email: %s' % str(e))
+		return redirect('invoice_detail', invoice.pk)
+
+	return render(request, 'invoices/email_invoice.html', {'invoice': invoice})
 
 
 def get_invoice_or_404_for_user(pk, user):
@@ -66,6 +98,38 @@ def get_businesses_for_user(user):
 	"""Return BusinessProfile queryset visible to `user` (superuser sees all)."""
 	# Enforce user-scoped businesses for all accounts
 	return BusinessProfile.objects.filter(user=user, is_deleted=False).order_by('-created_at')
+
+
+def _record_user_activity(user, activity_type, related_invoice=None):
+	"""Persist a simple activity record into `users_activity_logs`.
+
+	This uses a direct SQL insert to work with the existing unmanaged
+	`users_activity_logs` table that may pre-exist in production databases.
+	"""
+	try:
+		user_id = None
+		if user is None:
+			return
+		# Accept either a user object or an integer id
+		try:
+			user_id = int(user.pk) if hasattr(user, 'pk') else int(user)
+		except Exception:
+			try:
+				user_id = int(user)
+			except Exception:
+				return
+		with connection.cursor() as cur:
+			# Use system-local timezone-aware timestamp so stored dates match server local date
+			try:
+				ts = datetime.datetime.now().astimezone()
+			except Exception:
+				ts = timezone.now()
+			cur.execute(
+				"INSERT INTO users_activity_logs (user_id, activity_type, timestamp, related_invoice) VALUES (%s, %s, %s, %s)",
+				[user_id, str(activity_type)[:200], ts, (related_invoice or '')[:200]]
+			)
+	except Exception:
+		logging.exception('Failed to record user activity: %s for user %s', activity_type, getattr(user, 'pk', user))
 
 def login_view(request):
 	if request.user.is_authenticated:
@@ -362,6 +426,11 @@ def client_create(request):
 			client = form.save(commit=False)
 			client.user = request.user
 			client.save()
+			# Record activity: client_added
+			try:
+				_record_user_activity(request.user, 'client_added', related_invoice=None)
+			except Exception:
+				logging.exception('Failed to log client_added activity')
 			messages.success(request, 'Client created.')
 			return redirect('client_list')
 	else:
@@ -454,6 +523,11 @@ def _move_business_to_trash(pk, user=None):
 		b.is_deleted = True
 		b.deleted_at = timezone.now()
 		b.save(update_fields=['is_deleted', 'deleted_at'])
+		# Record activity: business_deleted
+		try:
+			_record_user_activity(user if user is not None else (b.user if getattr(b, 'user', None) else None), 'business_deleted', related_invoice=None)
+		except Exception:
+			logging.exception('Failed to log business_deleted activity')
 		return True
 	except Exception:
 		logging.exception('Failed to move BusinessProfile %s to trash', pk)
@@ -543,6 +617,11 @@ def _move_client_to_trash(pk, user=None):
 		c.is_deleted = True
 		c.deleted_at = timezone.now()
 		c.save(update_fields=['is_deleted', 'deleted_at'])
+		# Record activity: client_deleted
+		try:
+			_record_user_activity(user if user is not None else (c.user if getattr(c, 'user', None) else None), 'client_deleted', related_invoice=None)
+		except Exception:
+			logging.exception('Failed to log client_deleted activity')
 		return True
 	except Exception:
 		logging.exception('Failed to move Client %s to trash', pk)
@@ -936,34 +1015,6 @@ def client_bulk_action(request):
 
 
 @login_required
-def client_trash_list(request):
-	# show trashed clients with search and pagination
-	# Always limit trashed clients to the requesting user's items
-	qs = ClientTrash.objects.filter(user_id=request.user.id).order_by('-deleted_at')
-	q = request.GET.get('q', '').strip()
-	if q:
-		qs = qs.filter(Q(name__icontains=q) | Q(email__icontains=q) | Q(city__icontains=q))
-
-	_raw_page = request.GET.get('page')
-	try:
-		page_number = int(_raw_page) if _raw_page is not None else 1
-		if page_number < 1:
-			page_number = 1
-	except Exception:
-		page_number = 1
-	paginator = Paginator(qs, 10)
-	page = paginator.get_page(page_number)
-	context = {
-		'clients': page,
-		'q': q,
-		'page_obj': page,
-		'paginator': paginator,
-		'is_paginated': page.has_other_pages(),
-	}
-	return render(request, 'invoices/client_trash.html', context)
-
-
-@login_required
 def invoice_bulk_action(request):
 	if request.method != 'POST':
 		return redirect('invoice_list')
@@ -1082,14 +1133,6 @@ def invoice_live_preview(request, pk=None):
 	Also support GET preview for a saved/trashed invoice when `pk` is provided
 	(used by the invoice detail iframe).
 	"""
-	# Small helper to ensure returned response is marked exempt from X-Frame-Options
-	def finalize(resp):
-		try:
-			resp.xframe_options_exempt = True
-		except Exception:
-			pass
-		return resp
-
 	# If a GET request targets a saved invoice preview, render the saved/trashed
 	# invoice as HTML and return it. This consolidates preview rendering into
 	# one endpoint so clients use the same server-rendered HTML.
@@ -1157,27 +1200,81 @@ def invoice_live_preview(request, pk=None):
 		# prefer DB-backed template when present
 		tpl_choice = getattr(invoice, 'template_choice', request.GET.get('template') or '1')
 		db_template = None
+
+		# Build business object for preview rendering so templates have access
+		# to the business snapshot or the user's primary BusinessProfile.
+		business = None
+		try:
+			from types import SimpleNamespace as _SN
+			# If invoice has snapshot fields or a stored logo, prefer that
+			if getattr(invoice, 'business_name', None) or getattr(invoice, 'business_logo', None):
+				biz_logo = None
+				try:
+					if getattr(invoice, 'business_logo', None):
+						u = invoice.business_logo.url
+						if u and not u.startswith('http') and not u.startswith('data:'):
+							u = request.build_absolute_uri(u)
+						biz_logo = _SN(url=u)
+					
+				except Exception:
+					biz_logo = None
+				business = _SN(
+					business_name=getattr(invoice, 'business_name', '') or '',
+					email=getattr(invoice, 'business_email', '') or '',
+					phone=getattr(invoice, 'business_phone', '') or '',
+					address=getattr(invoice, 'business_address', '') or '',
+					logo=biz_logo,
+				)
+			else:
+				# fallback to first visible BusinessProfile for the user
+				bp = get_businesses_for_user(request.user).first()
+				if bp:
+					try:
+						u = bp.logo.url if getattr(bp, 'logo', None) else None
+						if u and not u.startswith('http') and not u.startswith('data:'):
+							u = request.build_absolute_uri(u)
+						biz_logo = _SN(url=u) if u else None
+					except Exception:
+						biz_logo = None
+					business = _SN(
+						business_name=getattr(bp, 'business_name', '') or '',
+						email=getattr(bp, 'email', '') or '',
+						phone=getattr(bp, 'phone', '') or '',
+						address=getattr(bp, 'address', '') or '',
+						logo=biz_logo,
+					)
+				else:
+					business = None
+		except Exception:
+			business = None
 		try:
 			db_template = InvoiceTemplate.objects.filter(template_id=tpl_choice).first()
 		except Exception:
 			db_template = None
 
-		context = {'invoice': invoice, 'request': request, 'template_choice': tpl_choice}
+		context = {'invoice': invoice, 'request': request, 'template_choice': tpl_choice, 'business': business}
 
 		if db_template and db_template.template_layout:
 			from django.template import engines
 			django_engine = engines['django']
 			tmpl = django_engine.from_string(db_template.template_layout)
 			html = tmpl.render(context)
-			return finalize(HttpResponse(html, content_type='text/html'))
+			return HttpResponse(html, content_type='text/html')
 
 		# fallback to filesystem
 		tpl_name = f'invoices/invoice_pdf_template{tpl_choice}.html'
 		try:
 			html = render_to_string(tpl_name, context, request=request)
-			return finalize(HttpResponse(html, content_type='text/html'))
+			return HttpResponse(html, content_type='text/html')
 		except Exception:
-			html = render_to_string('invoices/invoice_pdf_template1.html', context, request=request)
+			# Fallback to the default invoice preview template file; if that is
+			# missing, return a minimal safe HTML so iframe embedding doesn't 500.
+			try:
+				html = render_to_string('invoices/invoice_pdf.html', context, request=request)
+				return HttpResponse(html, content_type='text/html')
+			except Exception:
+				fallback = '<html><body><h3>Preview unavailable</h3><p>Could not find invoice template.</p></body></html>'
+				return HttpResponse(fallback, content_type='text/html')
 
 	data = None
 	# Accept JSON requests (primary) or form-encoded POSTs (fallback from hidden form submit)
@@ -1186,7 +1283,7 @@ def invoice_live_preview(request, pk=None):
 		try:
 			data = json.loads(request.body.decode('utf-8'))
 		except Exception:
-			return finalize(JsonResponse({'error': 'Invalid JSON'}, status=400))
+			return JsonResponse({'error': 'Invalid JSON'}, status=400)
 	else:
 		# build a simple data dict from form-encoded POST fields; supports common field names
 		try:
@@ -1201,17 +1298,15 @@ def invoice_live_preview(request, pk=None):
 				'payment_terms': pdata.get('payment_terms') or pdata.get('id_payment_terms'),
 				'notes': pdata.get('notes') or pdata.get('id_notes'),
 				'currency': pdata.get('currency') or pdata.get('id_currency') or 'USD',
-							return finalize(HttpResponse(html, content_type='text/html'))
-						else:
-							return finalize(HttpResponse(html, content_type='text/html'))
+				'client': {
+					'name': pdata.get('client_name') or pdata.get('id_client_name') or pdata.get('client') or '',
 					'email': pdata.get('client_email') or pdata.get('id_client_email') or '',
 					'phone': pdata.get('client_phone') or pdata.get('id_client_phone') or '',
 					'address': pdata.get('client_address') or pdata.get('id_client_address') or '',
 				},
-							return finalize(HttpResponse(html, content_type='text/html'))
-						except Exception:
-							html = render_to_string('invoices/invoice_pdf_template1.html', context, request=request)
-							return finalize(HttpResponse(html, content_type='text/html'))
+				'business': {
+					'id': pdata.get('business') or pdata.get('business_id') or '',
+					'business_name': pdata.get('business_name') or pdata.get('id_business_name') or pdata.get('business_name') or pdata.get('id_business_name_text') or '',
 					'email': pdata.get('business_email') or pdata.get('id_business_email') or pdata.get('id_business_email_text') or '',
 					'phone': pdata.get('business_phone') or pdata.get('id_business_phone') or pdata.get('id_business_phone_text') or '',
 					'address': pdata.get('business_address') or pdata.get('id_business_address') or pdata.get('id_business_address_text') or '',
@@ -1416,79 +1511,14 @@ def invoice_live_preview(request, pk=None):
 
 	# Try to render PDF
 	# If caller explicitly asked for HTML preview (format=html), return the rendered HTML
-	# (Removed debug marker/banner - production preview should not include debug markers)
 	if (request.GET.get('format') or '').lower() == 'html':
-		return finalize(HttpResponse(html_string, content_type='text/html'))
-
-
-@login_required
-def invoice_templates_list(request):
-    """List DB-backed invoice templates for editing."""
-    try:
-        templates = InvoiceTemplate.objects.all().order_by('-is_default', 'created_date')
-    except Exception:
-        templates = []
-    return render(request, 'invoices/templates_list.html', {'templates': templates})
-
-
-
-@login_required
-def invoice_template_edit(request, template_id=None):
-	"""Create or edit an InvoiceTemplate.template_layout.
-	GET: show editor. POST: save changes and redirect to list.
-	"""
-
-	tpl = None
-	if template_id:
-		try:
-			tpl = InvoiceTemplate.objects.filter(template_id=template_id).first()
-		except Exception:
-			tpl = None
-
-	if request.method == 'POST':
-		name = request.POST.get('template_name', '').strip()
-		layout = request.POST.get('template_layout', '')
-		is_default = bool(request.POST.get('is_default'))
-		# Save or create. For creation, use raw INSERT so DB BIGSERIAL assigns template_id.
-		try:
-			if tpl:
-				tpl.template_name = name
-				tpl.template_layout = layout
-				tpl.is_default = is_default
-				tpl.save()
-				messages.success(request, 'Template updated.')
-			else:
-				from django.db import connection
-				created_dt = timezone.now()
-				with connection.cursor() as cur:
-					cur.execute(
-						"""
-						INSERT INTO invoice_templates (template_name, template_layout, is_default, created_date)
-						VALUES (%s, %s, %s, %s) RETURNING template_id
-						""",
-						[name, layout, is_default, created_dt]
-					)
-					row = cur.fetchone()
-					new_id = row[0] if row else None
-					messages.success(request, 'Template created.' if new_id else 'Template created (no id returned).')
-		except Exception as e:
-			messages.error(request, f'Failed to save template: {e}')
-			return redirect('invoice_templates_list')
-
-	return render(request, 'invoices/template_editor.html', {'template': tpl})
-
+		return HttpResponse(html_string, content_type='text/html')
 	try:
 		from weasyprint import HTML
 	except Exception:
 		# If a PDF download was explicitly requested, still return the HTML but include a helpful status/message.
 		# The client-side will handle non-PDF responses gracefully.
-		return finalize(HttpResponse(html_string, content_type='text/html'))
-	try:
-		from weasyprint import HTML
-	except Exception:
-		# If a PDF download was explicitly requested, still return the HTML but include a helpful status/message.
-		# The client-side will handle non-PDF responses gracefully.
-		return finalize(HttpResponse(html_string, content_type='text/html'))
+		return HttpResponse(html_string, content_type='text/html')
 
 	try:
 		html = HTML(string=html_string, base_url=request.build_absolute_uri('/'))
@@ -1499,9 +1529,9 @@ def invoice_template_edit(request, template_id=None):
 			response['Content-Disposition'] = 'attachment; filename="invoice_preview.pdf"'
 		else:
 			response['Content-Disposition'] = 'inline; filename="invoice_preview.pdf"'
-			return finalize(response)
-		except Exception:
-			return finalize(HttpResponse(html_string, content_type='text/html'))
+		return response
+	except Exception:
+		return HttpResponse(html_string, content_type='text/html')
 
 
 @login_required
@@ -1659,13 +1689,17 @@ def invoice_create(request):
 			except IntegrityError as e:
 				# Handle duplicate invoice_number (unique constraint) gracefully
 				msg = str(e)
-				if 'invoice_number' in msg or 'duplicate key' in msg.lower() or 'unique' in msg.lower():
+				_lower = msg.lower() if msg else ''
+				is_duplicate = ('duplicate' in _lower or 'duplicate key' in _lower or 'unique' in _lower or 'invoice_number' in _lower)
+				if is_duplicate:
 					# Attach form error so template shows inline validation
 					form.add_error('invoice_number', 'Invoice number already exists. Please choose a different invoice number.')
 				else:
 					form.add_error(None, 'Failed to save invoice: ' + msg)
-				# If this was an AJAX save request, return a JSON error so frontend can handle it
+				# If this was an AJAX save request, return a structured JSON error so frontend can handle it
 				if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+					if is_duplicate:
+						return JsonResponse({'ok': False, 'error': 'duplicate_invoice_number', 'message': 'Invoice number already exists. Please choose a different invoice number.'}, status=400)
 					return JsonResponse({'ok': False, 'error': 'save_failed', 'message': str(msg)}, status=400)
 				# Fall through to re-render form with errors
 			# bind formset to the saved invoice instance and validate/save
@@ -1677,6 +1711,11 @@ def invoice_create(request):
 				download_after = (request.POST.get('download_after_save') == '1' or request.POST.get('download_after_save') == 'true')
 				if download_after and request.headers.get('x-requested-with') == 'XMLHttpRequest':
 					return JsonResponse({'ok': True, 'pk': invoice.pk})
+				# Record activity: invoice_created
+				try:
+					_record_user_activity(request.user, 'invoice_created', related_invoice=getattr(invoice, 'invoice_number', str(getattr(invoice, 'pk', ''))))
+				except Exception:
+					logging.exception('Failed to log invoice_created activity')
 				messages.success(request, 'Invoice created.')
 				return redirect('invoice_list')
 			else:
@@ -1827,6 +1866,48 @@ def superadmin_dashboard(request):
 		log_page_num = int(request.GET.get('log_page', 1) or 1)
 		log_paginator = Paginator(logs_qs, 50)
 		logs_page = log_paginator.get_page(log_page_num)
+		# Build safe links for related_invoice values to avoid NoReverseMatch
+		for log in logs_page.object_list:
+			log.related_invoice_link = ''
+			# normalize timestamp to localtime for display
+			try:
+				ts = getattr(log, 'timestamp')
+				# Prefer converting to the system local timezone so display matches DB/server local time
+				try:
+					log.timestamp_local = ts.astimezone()
+				except Exception:
+					log.timestamp_local = timezone.localtime(ts)
+			except Exception:
+				log.timestamp_local = getattr(log, 'timestamp')
+			# normalize timestamp to localtime for display
+			try:
+				ts = getattr(log, 'timestamp')
+				try:
+					log.timestamp_local = ts.astimezone()
+				except Exception:
+					log.timestamp_local = timezone.localtime(ts)
+			except Exception:
+				log.timestamp_local = getattr(log, 'timestamp')
+			# debug timestamps for troubleshooting timezone mismatch
+			try:
+				logging.debug('superadmin_activity: activity_id=%s raw=%r localized=%r tz=%s', getattr(log, 'activity_id', None), ts, getattr(log, 'timestamp_local', None), timezone.get_current_timezone_name())
+			except Exception:
+				pass
+			try:
+				rel = (log.related_invoice or '').strip()
+				if not rel:
+					continue
+				if rel.isdigit():
+					try:
+						log.related_invoice_link = reverse('invoice_detail', args=(int(rel),))
+						continue
+					except Exception:
+						log.related_invoice_link = ''
+					inv = Invoice.objects.filter(invoice_number=str(rel)).first()
+					if inv:
+						log.related_invoice_link = reverse('invoice_detail', args=(inv.pk,))
+			except Exception:
+				log.related_invoice_link = ''
 	except (DatabaseError, ProgrammingError) as e:
 		# Table may not exist; show empty page and flag missing state for template
 		logs_missing = True
@@ -1857,6 +1938,33 @@ def superadmin_log_detail(request, activity_id):
 	except UsersActivityLog.DoesNotExist:
 		from django.http import Http404
 		raise Http404('Activity log not found')
+	# provide localized timestamp for template
+	try:
+		# Prefer explicit Manila timezone for display
+		try:
+			timezone.activate(ZoneInfo('Asia/Manila'))
+		except Exception:
+			try:
+				_system_tz = datetime.datetime.now().astimezone().tzinfo
+				timezone.activate(_system_tz)
+			except Exception:
+				pass
+		ts = getattr(log, 'timestamp')
+		# Prefer astimezone when available, otherwise use Django's localtime
+		try:
+			log.timestamp_local = ts.astimezone()
+		except Exception:
+			try:
+				log.timestamp_local = timezone.localtime(ts)
+			except Exception:
+				log.timestamp_local = getattr(log, 'timestamp')
+		# Debug output to help diagnose mismatched date display
+		try:
+			logging.debug('superadmin_log_detail: raw timestamp=%r localized=%r tz=%s', ts, getattr(log, 'timestamp_local', None), timezone.get_current_timezone_name())
+		except Exception:
+			pass
+	except Exception:
+		log.timestamp_local = getattr(log, 'timestamp')
 	return render(request, 'superadmin/log_detail.html', {'log': log})
 
 
@@ -1870,6 +1978,16 @@ def superadmin_activity(request):
 
 	logs_missing = False
 	logs_page = None
+	# Activate server/system local timezone so displayed datetimes match DB/server local time
+	try:
+		# Prefer explicit Manila timezone
+		timezone.activate(ZoneInfo('Asia/Manila'))
+	except Exception:
+		try:
+			_system_tz = datetime.datetime.now().astimezone().tzinfo
+			timezone.activate(_system_tz)
+		except Exception:
+			pass
 	try:
 		logs_qs = UsersActivityLog.objects.all().order_by('-timestamp')
 		if user_filter:
@@ -1881,6 +1999,29 @@ def superadmin_activity(request):
 			logs_qs = logs_qs.filter(Q(activity_type__icontains=q) | Q(related_invoice__icontains=q))
 		paginator = Paginator(logs_qs, 50)
 		logs_page = paginator.get_page(page)
+		# Build safe links for related_invoice values to avoid NoReverseMatch
+		for log in logs_page.object_list:
+			log.related_invoice_link = ''
+			try:
+				rel = (log.related_invoice or '').strip()
+				if not rel:
+					continue
+				# If it's purely numeric, treat as PK
+				if rel.isdigit():
+					try:
+						log.related_invoice_link = reverse('invoice_detail', args=(int(rel),))
+						continue
+					except Exception:
+						log.related_invoice_link = ''
+				# Otherwise try to resolve by invoice_number
+				try:
+					inv = Invoice.objects.filter(invoice_number=str(rel)).first()
+					if inv:
+						log.related_invoice_link = reverse('invoice_detail', args=(inv.pk,))
+				except Exception:
+					log.related_invoice_link = ''
+			except Exception:
+				log.related_invoice_link = ''
 	except (DatabaseError, ProgrammingError):
 		logs_missing = True
 		logs_page = Paginator([], 50).get_page(1)
@@ -1892,6 +2033,9 @@ def superadmin_activity(request):
 @require_POST
 def toggle_user_active(request, pk):
 	if not getattr(request.user, 'is_superuser', False):
+	
+
+	
 		return HttpResponseForbidden('Forbidden')
 	User = get_user_model()
 	try:
@@ -1909,10 +2053,8 @@ def superadmin_user_invoices(request, user_id):
 	if not getattr(request.user, 'is_superuser', False):
 		return HttpResponseForbidden('Forbidden')
 	User = get_user_model()
-	# Only allow superadmins to view their own invoices (no cross-user visibility)
+	# Allow superadmins to view invoices for the requested user
 	target_user = get_object_or_404(User, pk=user_id)
-	if target_user.pk != request.user.pk:
-		return HttpResponseForbidden('Forbidden')
 
 	q = request.GET.get('q', '').strip()
 	status = request.GET.get('status', '').strip()
@@ -1946,8 +2088,13 @@ def superadmin_all_invoices(request):
 	user_filter = request.GET.get('user', '').strip()
 	page = int(request.GET.get('page', 1) or 1)
 
-	# Only show invoices owned by the requesting superadmin
-	invoices_qs = Invoice.objects.filter(user=request.user, is_deleted=False)
+	# Show all invoices across users (superadmin view)
+	invoices_qs = Invoice.objects.filter(is_deleted=False)
+	if user_filter:
+		try:
+			invoices_qs = invoices_qs.filter(user_id=int(user_filter))
+		except Exception:
+			pass
 	if q:
 		invoices_qs = invoices_qs.filter(Q(invoice_number__icontains=q) | Q(client__name__icontains=q))
 	if status:
@@ -1973,15 +2120,13 @@ def superadmin_businesses(request):
 	user_filter = request.GET.get('user', '').strip()
 	page = int(request.GET.get('page', 1) or 1)
 
-	# Only show businesses owned by the requesting superadmin
-	qs = BusinessProfile.objects.filter(user=request.user, is_deleted=False)
+	# Show businesses for all users; allow optional user filter
+	qs = BusinessProfile.objects.filter(is_deleted=False)
 	if user_filter:
 		try:
-			# allow filtering to narrow down to own user id only
-			if int(user_filter) != request.user.id:
-				qs = qs.none()
+			qs = qs.filter(user_id=int(user_filter))
 		except Exception:
-			qs = qs.none()
+			pass
 	if q:
 		qs = qs.filter(Q(business_name__icontains=q) | Q(email__icontains=q))
 
@@ -1998,14 +2143,13 @@ def superadmin_clients(request):
 	user_filter = request.GET.get('user', '').strip()
 	page = int(request.GET.get('page', 1) or 1)
 
-	# Only show clients owned by the requesting superadmin
-	qs = Client.objects.filter(user=request.user, is_deleted=False)
+	# Show clients for all users; allow optional user filter
+	qs = Client.objects.filter(is_deleted=False)
 	if user_filter:
 		try:
-			if int(user_filter) != request.user.id:
-				qs = qs.none()
+			qs = qs.filter(user_id=int(user_filter))
 		except Exception:
-			qs = qs.none()
+			pass
 	if q:
 		qs = qs.filter(Q(name__icontains=q) | Q(email__icontains=q))
 
@@ -2030,6 +2174,76 @@ def superadmin_manage_superadmins(request):
 	page_obj = paginator.get_page(page)
 
 	return render(request, 'superadmin/manage_superadmins.html', {'page_obj': page_obj, 'q': q})
+
+
+@login_required
+@require_POST
+def superadmin_delete_invoice(request, pk):
+	if not getattr(request.user, 'is_superuser', False):
+		return HttpResponseForbidden('Forbidden')
+	try:
+		# Move to trash for safety
+		moved = _move_invoice_to_trash(pk, user=None)
+		if moved:
+			messages.success(request, 'Invoice moved to trash.')
+		else:
+			messages.error(request, 'Failed to move invoice to trash.')
+	except Exception:
+		logging.exception('Failed to delete invoice %s', pk)
+		messages.error(request, 'Failed to delete invoice.')
+	return redirect(request.META.get('HTTP_REFERER') or reverse('superadmin_all_invoices'))
+
+
+@login_required
+@require_POST
+def superadmin_delete_business(request, pk):
+	if not getattr(request.user, 'is_superuser', False):
+		return HttpResponseForbidden('Forbidden')
+	try:
+		moved = _move_business_to_trash(pk, user=None)
+		if moved:
+			messages.success(request, 'Business moved to trash.')
+		else:
+			messages.error(request, 'Failed to move business to trash.')
+	except Exception:
+		logging.exception('Failed to delete business %s', pk)
+		messages.error(request, 'Failed to delete business.')
+	return redirect(request.META.get('HTTP_REFERER') or reverse('superadmin_businesses'))
+
+
+@login_required
+@require_POST
+def superadmin_delete_client(request, pk):
+	if not getattr(request.user, 'is_superuser', False):
+		return HttpResponseForbidden('Forbidden')
+	try:
+		moved = _move_client_to_trash(pk, user=None)
+		if moved:
+			messages.success(request, 'Client moved to trash.')
+		else:
+			messages.error(request, 'Failed to move client to trash.')
+	except Exception:
+		logging.exception('Failed to delete client %s', pk)
+		messages.error(request, 'Failed to delete client.')
+	return redirect(request.META.get('HTTP_REFERER') or reverse('superadmin_clients'))
+
+
+@login_required
+@require_POST
+def superadmin_delete_user(request, pk):
+	if not getattr(request.user, 'is_superuser', False):
+		return HttpResponseForbidden('Forbidden')
+	User = get_user_model()
+	try:
+		if int(pk) == int(request.user.pk):
+			messages.error(request, 'Cannot delete your own account.')
+			return redirect(request.META.get('HTTP_REFERER') or reverse('superadmin_dashboard'))
+		User.objects.filter(pk=pk).delete()
+		messages.success(request, 'User deleted.')
+	except Exception:
+		logging.exception('Failed to delete user %s', pk)
+		messages.error(request, 'Failed to delete user.')
+	return redirect(request.META.get('HTTP_REFERER') or reverse('superadmin_dashboard'))
 
 
 @login_required
@@ -2200,6 +2414,11 @@ def invoice_edit(request, pk):
 			formset.save()
 			invoice.recalc_totals()
 			messages.success(request, 'Invoice updated.')
+			# Record activity: invoice_edited
+			try:
+				_record_user_activity(request.user, 'invoice_edited', related_invoice=getattr(invoice, 'invoice_number', str(getattr(invoice, 'pk', ''))))
+			except Exception:
+				logging.exception('Failed to log invoice_edited activity')
 			return redirect('invoice_detail', pk=invoice.pk)
 		else:
 			# surface errors to help debugging
@@ -2350,11 +2569,11 @@ def generate_pdf(request, pk):
 				client_address=trash_snapshot.client_address,
 				items=ItemListObj(trash_snapshot.items or []),
 				created_at=trash_snapshot.created_at,
+				template_choice=getattr(trash_snapshot, 'template_choice', '1'),
 			)
-			# build business later below using trash_snapshot.business_* fields
 		else:
-			# re-raise original 404
 			raise
+
 	# Prefer invoice-level snapshot/logo when present so each invoice's PDF reflects
 	# the selected/uploaded image. Fall back to the user's BusinessProfile otherwise.
 	business = None
@@ -2450,130 +2669,86 @@ def generate_pdf(request, pk):
 					try:
 						html_string = render_to_string(template_name, {'invoice': invoice, 'business': business}, request=request)
 					except Exception:
-						html_string = render_to_string('invoices/invoice_pdf.html', {'invoice': invoice, 'business': business}, request=request)
-				else:
-					html_string = render_to_string('invoices/invoice_pdf.html', {'invoice': invoice, 'business': business}, request=request)
+						pass
 		except Exception:
-			# on error, default to filesystem template
-			html_string = render_to_string('invoices/invoice_pdf.html', {'invoice': invoice, 'business': business}, request=request)
-	else:
-		html_string = render_to_string('invoices/invoice_pdf.html', {'invoice': invoice, 'business': business}, request=request)
+			pass
 
-	# Allow forcing a specific backend via ?backend=wkhtmltopdf
-	backend = (request.GET.get('backend') or '').lower()
-	prefer_wk = backend == 'wkhtmltopdf'
-
-	# Try to import WeasyPrint unless the caller specifically requested wkhtmltopdf
-	weasy_error = None
-	HTML = None
-	if not prefer_wk:
+	# At this point we have `html_string` ready. Try to render PDF using
+	# WeasyPrint first; if unavailable, try wkhtmltopdf; otherwise return
+	# the HTML as a downloadable fallback so the Download button always works.
+	def _render_html_to_pdf_response(html_content, filename):
+		# Try WeasyPrint
 		try:
 			from weasyprint import HTML
-		except Exception as e:
-			HTML = None
-			weasy_error = str(e)
-
-	# If WeasyPrint is available and not overridden, use it.
-	if HTML:
-		try:
-			html = HTML(string=html_string, base_url=request.build_absolute_uri('/'))
-			pdf = html.write_pdf()
-			response = HttpResponse(pdf, content_type='application/pdf')
-			if request.GET.get('format') == 'pdf':
-				response['Content-Disposition'] = f'attachment; filename="invoice-{invoice.invoice_number}.pdf"'
-			else:
-				response['Content-Disposition'] = f'inline; filename="invoice-{invoice.invoice_number}.pdf"'
-			return response
-		except Exception as e:
-			weasy_error = (weasy_error or '') + '\n' + str(e)
-
-	# WeasyPrint not available or failed — attempt wkhtmltopdf fallback.
-	wk_cmd_setting = getattr(settings, 'WKHTMLTOPDF_CMD', None)
-	candidates = []
-	if wk_cmd_setting:
-		candidates.append(wk_cmd_setting)
-	# prefer PATH lookup
-	try:
-		found = shutil.which('wkhtmltopdf')
-		if found:
-			candidates.append(found)
-	except Exception:
-		pass
-
-	# common locations (Windows / Linux)
-	candidates.extend([
-		r'C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe',
-		r'C:\Program Files (x86)\wkhtmltopdf\bin\wkhtmltopdf.exe',
-		'/usr/local/bin/wkhtmltopdf',
-		'/usr/bin/wkhtmltopdf',
-	])
-
-	wk_error = None
-	used_cmd = None
-	for cmd in candidates:
-		if not cmd:
-			continue
-		# If cmd is an explicit path, check file exists; if it's a name, shutil.which will help
-		try:
-			if os.path.isfile(cmd) or shutil.which(cmd):
-				used_cmd = cmd
-				break
+			html_obj = HTML(string=html_content, base_url=request.build_absolute_uri('/'))
+			pdf_bytes = html_obj.write_pdf()
+			resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+			resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+			return resp
 		except Exception:
-			continue
+			# Continue to next backend
+			pass
 
-	if used_cmd:
+		# Try wkhtmltopdf if configured or available on PATH
 		try:
-			# write HTML to temp file and generate PDF using wkhtmltopdf
-			# Ensure resource URLs (media/static) are absolute so wkhtmltopdf can fetch them
-			base_url = request.build_absolute_uri('/')
-			html_for_wk = html_string.replace('src="/', f'src="{base_url}').replace("src='/", f"src='{base_url}")
-			html_for_wk = html_for_wk.replace('href="/', f'href="{base_url}').replace("href='/", f"href='{base_url}")
-			html_for_wk = html_for_wk.replace("url('/", f"url('{base_url}").replace('url("/', f'url("{base_url}')
+			import shutil, subprocess
+			wk_cmd = getattr(settings, 'WKHTMLTOPDF_CMD', None) or shutil.which('wkhtmltopdf')
+			if wk_cmd:
+				proc = subprocess.Popen([wk_cmd, '--quiet', '-', '-'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+				out, err = proc.communicate(input=html_content.encode('utf-8'), timeout=30)
+				if proc.returncode == 0 and out:
+					resp = HttpResponse(out, content_type='application/pdf')
+					resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+					return resp
+		except Exception:
+			pass
 
-			with tempfile.NamedTemporaryFile(delete=False, suffix='.html') as fh:
-				fh.write(html_for_wk.encode('utf-8'))
-				fh.flush()
-				tmp_html = fh.name
-			tmp_pdf = tmp_html + '.pdf'
-			# Ensure we enable local file access for complex templates
-			proc = subprocess.run([used_cmd, '--enable-local-file-access', tmp_html, tmp_pdf], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
-			if proc.returncode == 0 and os.path.exists(tmp_pdf):
-				with open(tmp_pdf, 'rb') as f:
-					pdf = f.read()
-				try:
-					os.unlink(tmp_html)
-				except Exception:
-					pass
-				try:
-					os.unlink(tmp_pdf)
-				except Exception:
-					pass
-				response = HttpResponse(pdf, content_type='application/pdf')
-				if request.GET.get('format') == 'pdf':
-					response['Content-Disposition'] = f'attachment; filename="invoice-{invoice.invoice_number}.pdf"'
-				else:
-					response['Content-Disposition'] = f'inline; filename="invoice-{invoice.invoice_number}.pdf"'
-				return response
-			else:
-				wk_error = proc.stderr.decode('utf-8', errors='replace')
-		except Exception as e:
-			wk_error = str(e)
+		# Final fallback: HTML as downloadable file
+		resp = HttpResponse(html_content, content_type='text/html')
+		resp['Content-Disposition'] = 'attachment; filename="' + filename.rsplit('.',1)[0] + '.html"'
+		return resp
 
-	# If we reach here, no PDF backend produced a PDF. Provide informative HTML fallback
-	messages_html = ['PDF generation is currently unavailable.']
-	if weasy_error:
-		messages_html.append('<strong>WeasyPrint error:</strong> ' + str(weasy_error))
-	if used_cmd:
-		messages_html.append('<strong>Attempted wkhtmltopdf:</strong> ' + str(used_cmd))
-	if wk_error:
-		messages_html.append('<strong>wkhtmltopdf error:</strong> ' + str(wk_error))
-	if not used_cmd:
-		messages_html.append('wkhtmltopdf not found on system PATH or common locations.')
-	messages_html.append('To enable PDF downloads, install WeasyPrint with its native dependencies OR install wkhtmltopdf and add it to PATH or set <code>WKHTMLTOPDF_CMD</code> in settings.')
+	filename = f"invoice_{getattr(invoice, 'invoice_number', 'preview')}.pdf"
+	# Enforce server-side requirement: invoice must have a client email or the
+	# business must have an email before allowing PDF downloads. This mirrors the
+	# client-side check and provides a friendly response for requests that bypass
+	# the UI (direct links, scripts, etc.). For XHR/fetch callers return JSON;
+	# otherwise redirect back to the invoice list with a message.
+	try:
+		client_email = getattr(invoice, 'client_email', None) or (getattr(getattr(invoice, 'client', None), 'email', None) if getattr(invoice, 'client', None) else None)
+	except Exception:
+		client_email = None
+	try:
+		biz_email = getattr(business, 'email', None) if business is not None else None
+	except Exception:
+		biz_email = None
+	if not (client_email and str(client_email).strip()) and not (biz_email and str(biz_email).strip()):
+		msg = 'Please add a client or business email before downloading the PDF.'
+		try:
+			messages.error(request, msg)
+		except Exception:
+			pass
+		# If caller expects JSON (XHR) return structured error, else redirect
+		if request.headers.get('x-requested-with') == 'XMLHttpRequest' or request.GET.get('format') == 'json':
+			return JsonResponse({'ok': False, 'error': 'missing_email', 'message': msg}, status=400)
+		return redirect('invoice_list')
 
-	diagnostic = '<br/>'.join(messages_html)
-	html_with_diag = f'<div class="alert alert-warning" style="margin:12px;">{diagnostic}</div>' + html_string
-	return HttpResponse(html_with_diag, content_type='text/html')
+	resp = _render_html_to_pdf_response(html_string, filename)
+	try:
+		# If we returned a PDF, record a pdf_downloaded activity
+		content_type = getattr(resp, 'content_type', resp.get('Content-Type', ''))
+		if content_type and 'application/pdf' in content_type:
+			try:
+				related = getattr(invoice, 'invoice_number', str(getattr(invoice, 'pk', '')))
+			except Exception:
+				related = str(getattr(invoice, 'pk', ''))
+			try:
+				_record_user_activity(request.user, 'pdf_downloaded', related_invoice=related)
+			except Exception:
+				logging.exception('Failed to log pdf_downloaded activity')
+	except Exception:
+		logging.exception('Failed to check PDF response for activity logging')
+	return resp
 
 
 @login_required
@@ -2679,9 +2854,9 @@ def invoice_preview_html(request, pk):
 
 	# reuse generate_pdf template selection logic
 	tpl = (request.GET.get('template') or '') or getattr(invoice, 'template_choice', None) or '1'
-	html_string = render_to_string('invoices/invoice_pdf.html', {'invoice': invoice, 'business': business}, request=request)
-	if tpl:
-		try:
+	try:
+		html_string = render_to_string('invoices/invoice_pdf.html', {'invoice': invoice, 'business': business}, request=request)
+		if tpl:
 			tmpl = None
 			if str(tpl).isdigit():
 				tmpl = InvoiceTemplate.objects.filter(template_id=int(tpl)).first()
@@ -2698,10 +2873,24 @@ def invoice_preview_html(request, pk):
 						html_string = render_to_string(f'invoices/invoice_pdf_template{tpl}.html', {'invoice': invoice, 'business': business}, request=request)
 					except Exception:
 						pass
-		except Exception:
-			pass
+	except Exception:
+		logging.exception('Failed to render invoice preview template')
+		fallback = '<html><body><h3>Preview unavailable</h3><p>An error occurred while rendering the invoice preview template.</p></body></html>'
+		resp = HttpResponse(fallback, content_type='text/html')
+		resp['X-Frame-Options'] = 'SAMEORIGIN'
+		return resp
 
-	return HttpResponse(html_string, content_type='text/html')
+	# Always return an HTML preview response; explicitly allow same-origin framing
+	try:
+		resp = HttpResponse(html_string, content_type='text/html')
+		resp['X-Frame-Options'] = 'SAMEORIGIN'
+		return resp
+	except Exception:
+		# In case building the HttpResponse fails, return a simple safe message
+		fallback = '<html><body><h3>Preview unavailable</h3><p>An error occurred while rendering the invoice preview.</p></body></html>'
+		resp = HttpResponse(fallback, content_type='text/html')
+		resp['X-Frame-Options'] = 'SAMEORIGIN'
+		return resp
 	try:
 		html = HTML(string=html_string, base_url=request.build_absolute_uri('/'))
 		pdf = html.write_pdf()
@@ -2717,7 +2906,16 @@ def invoice_preview_html(request, pk):
 		return response
 	except Exception:
 		messages.error(request, 'Failed to generate PDF. Showing HTML preview instead.')
-		return HttpResponse(html_string, content_type='text/html')
+		try:
+			resp = HttpResponse(html_string, content_type='text/html')
+			resp['X-Frame-Options'] = 'SAMEORIGIN'
+			return resp
+		except Exception:
+			fallback = '<html><body><h3>Preview unavailable</h3><p>An internal error occurred while rendering the preview.</p></body></html>'
+			resp = HttpResponse(fallback, content_type='text/html')
+			resp['X-Frame-Options'] = 'SAMEORIGIN'
+			return resp
+    
 
 
 @login_required
@@ -2750,90 +2948,207 @@ def pdf_status(request):
 	return JsonResponse(status)
 
 
+def _ensure_ad_click_table():
+	"""Create ad_clicks table if it doesn't exist (idempotent)."""
+	sql = """
+	CREATE TABLE IF NOT EXISTS ad_clicks (
+		click_id BIGSERIAL PRIMARY KEY,
+		user_id INTEGER NULL,
+		session_id TEXT NULL,
+		ad_identifier TEXT NOT NULL,
+		ad_placement_location TEXT NOT NULL,
+		timestamp TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+		target_url TEXT NULL,
+		user_context TEXT NULL,
+		invoice_id INTEGER NULL
+	);
+	"""
+	try:
+		with connection.cursor() as cur:
+			cur.execute(sql)
+	except Exception:
+		logging.exception("Failed to ensure ad_clicks table exists")
+
 @csrf_exempt
 def track_ad_click(request):
+	# ...existing decorator...
 	if request.method == 'POST':
 		try:
 			data = json.loads(request.body)
 		except Exception:
 			data = {}
-		AdClick.objects.create(
-			ad_identifier=data.get('ad_id') or data.get('ad_identifier', 'unknown'),
-			placement=data.get('placement', ''),
-			target_url=data.get('url') or data.get('target_url', ''),
-		)
+		ad_id = data.get('ad_id') or data.get('ad_identifier') or 'unknown'
+		placement = data.get('placement') or data.get('ad_placement') or data.get('ad_placement_location') or ''
+		target = data.get('url') or data.get('target_url') or ''
+		context_str = data.get('user_context') or data.get('context') or ''
+		invoice_id = data.get('invoice_id') or None
+
+		# client IP
+		ip_address = None
+		try:
+			ip = request.META.get('HTTP_X_FORWARDED_FOR')
+			if ip:
+				ip_address = ip.split(',')[0].strip()
+			else:
+				ip_address = request.META.get('REMOTE_ADDR')
+		except Exception:
+			ip_address = None
+
+		# Determine user/session
+		user_id = None
+		session_id = None
+		try:
+			if request.user and request.user.is_authenticated:
+				user_id = int(request.user.pk)
+			else:
+				# ensure session exists
+				session_key = request.session.session_key
+				if not session_key:
+					request.session.save()
+					session_key = request.session.session_key
+				session_id = session_key
+		except Exception:
+			pass
+
+		# Try to create via existing model if available (non-blocking)
+		try:
+			ac_kwargs = dict(
+				ad_identifier=ad_id,
+				placement=(placement or ''),
+				target_url=(target or ''),
+				session_id=(session_id or ''),
+				ip_address=(ip_address or None),
+			)
+			if user_id:
+				try:
+					from django.contrib.auth import get_user_model
+					User = get_user_model()
+					u = User.objects.filter(pk=user_id).first()
+					if u:
+						ac_kwargs['user'] = u
+				except Exception:
+					pass
+			AdClick.objects.create(**ac_kwargs)
+		except Exception:
+			# model may differ; ignore but log
+			logging.debug("AdClick model write failed or model shape differs", exc_info=True)
+
+		# Ensure ad_clicks table exists and insert detailed row (Postgres)
+		try:
+			_ensure_ad_click_table()
+			with connection.cursor() as cur:
+				# Inspect existing columns to avoid schema mismatch on legacy DBs
+				cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'ad_clicks'")
+				existing = {r[0] for r in cur.fetchall()}
+				mapping = [
+					('user_id', user_id),
+					('session_id', session_id),
+					('ad_identifier', ad_id),
+					('placement', placement),
+					('ad_placement_location', placement),
+					('target_url', target),
+					('user_context', context_str),
+					('ip_address', ip_address),
+					('timestamp', timezone.now()),
+					('invoice_id', invoice_id),
+				]
+				cols = []
+				vals = []
+				for col, val in mapping:
+					# If invoice_id would violate FK, skip it to avoid IntegrityError
+					if col == 'invoice_id' and val is not None:
+						try:
+							iid = int(val)
+							# verify invoice exists before including
+							if not Invoice.objects.filter(pk=iid).exists():
+								continue
+						except Exception:
+							# if we can't coerce to int, skip including invoice_id
+							continue
+					if col in existing:
+						cols.append(col)
+						vals.append(val)
+				if cols:
+					sql = "INSERT INTO ad_clicks (%s) VALUES (%s)" % (', '.join(cols), ', '.join(['%s'] * len(vals)))
+					cur.execute(sql, vals)
+		except Exception:
+			logging.exception("Failed to persist ad click to ad_clicks table")
+
+			# Record a generic activity for ad_clicked
+			try:
+				related = ''
+				try:
+					if invoice_id:
+						inv = Invoice.objects.filter(pk=int(invoice_id)).first()
+						if inv:
+							related = getattr(inv, 'invoice_number', str(inv.pk))
+				except Exception:
+					related = str(invoice_id) if invoice_id else ''
+				_record_user_activity(request.user if getattr(request, 'user', None) and request.user.is_authenticated else request.user, 'ad_clicked', related_invoice=related)
+			except Exception:
+				logging.exception('Failed to log ad_clicked activity')
+
 		return JsonResponse({'status': 'ok'})
 	return JsonResponse({'status': 'method not allowed'}, status=405)
 
+@login_required
+def client_trash_list(request):
+	"""Show trashed clients for the current user (with search & pagination).
+
+	This view intentionally avoids side effects and renders `invoices/client_trash.html`.
+	"""
+	q = (request.GET.get('q') or '').strip()
+	# Regular users see only their trashed clients; superusers see all.
+	if request.user.is_superuser:
+		qs = ClientTrash.objects.all()
+	else:
+		qs = ClientTrash.objects.filter(user=request.user)
+
+	if q:
+		qs = qs.filter(Q(name__icontains=q) | Q(email__icontains=q) | Q(city__icontains=q) | Q(country__icontains=q))
+
+	qs = qs.order_by('-deleted_at')
+	paginator = Paginator(qs, 25)
+	page_number = request.GET.get('page') or 1
+	page_obj = paginator.get_page(page_number)
+
+	context = {
+		'clients': page_obj.object_list,
+		'is_paginated': page_obj.has_other_pages(),
+		'page_obj': page_obj,
+		'paginator': paginator,
+		'q': q,
+	}
+	return render(request, 'invoices/client_trash.html', context)
+
 
 def exchange_rate(request):
-	"""Proxy to exchangerate.host for a simple rate lookup: ?base=USD&target=EUR"""
-	base = request.GET.get('base', 'USD').upper()
-	target = request.GET.get('target', 'USD').upper()
-	if base == target:
-		return JsonResponse({'rate': 1.0})
-	# Prefer requests if available, otherwise use urllib to avoid adding strict dependency
-	try:
+	"""Return a simple JSON with a currency conversion rate.
+
+	Query params: `from` (currency code), `to` (currency code).
+	This attempts a short external fetch but falls back to a safe default
+	so the endpoint never raises during startup checks.
+	"""
+	from_currency = (request.GET.get('from') or request.GET.get('base') or 'USD').upper()
+	to_currency = (request.GET.get('to') or request.GET.get('symbol') or 'USD').upper()
+	rate = None
+	# Quick short-circuit
+	if from_currency == to_currency:
+		rate = 1.0
+	else:
 		try:
-			import requests
-			r = requests.get('https://api.exchangerate.host/latest', params={'base': base, 'symbols': target}, timeout=5)
-			r.raise_for_status()
-			data = r.json()
+			import urllib.request, json
+			url = f'https://api.exchangerate.host/convert?from={from_currency}&to={to_currency}'
+			with urllib.request.urlopen(url, timeout=3) as resp:
+				data = json.load(resp)
+				# API returns {"info": {"rate": ...}, "result": ...}
+				rate = data.get('info', {}).get('rate') or data.get('result')
 		except Exception:
-			# fallback to urllib
-			from urllib.request import urlopen
-			from urllib.parse import urlencode
-			url = 'https://api.exchangerate.host/latest?' + urlencode({'base': base, 'symbols': target})
-			with urlopen(url, timeout=5) as fh:
-				import json as _json
-				data = _json.load(fh)
+			rate = None
 
-		rate = data.get('rates', {}).get(target)
-		if rate is None:
-			return JsonResponse({'error': 'rate not found'}, status=404)
-		return JsonResponse({'rate': rate})
-	except Exception as e:
-		return JsonResponse({'error': str(e)}, status=500)
+	if rate is None:
+		# Fallback: 1.0 so callers can proceed without failing.
+		rate = 1.0
 
-
-@login_required
-def email_invoice(request, pk):
-	invoice = get_invoice_or_404_for_user(pk, request.user)
-	client_email = invoice.client_email or invoice.client.email
-	if not client_email:
-		messages.error(request, 'Client does not have an email address.')
-		return redirect('invoice_detail', pk=pk)
-
-	if request.method == 'POST':
-		subject = request.POST.get('subject') or f'Invoice {invoice.invoice_number}'
-		message = request.POST.get('message') or 'Please find your invoice attached.'
-		from django.core.mail import EmailMessage
-		from django.conf import settings
-
-		attachments = []
-		# Try to generate PDF; if not possible attach HTML
-		html_string = render_to_string('invoices/invoice_pdf.html', {'invoice': invoice, 'business': get_businesses_for_user(request.user).first()})
-		try:
-			from weasyprint import HTML
-			html = HTML(string=html_string, base_url=request.build_absolute_uri('/'))
-			pdf = html.write_pdf()
-			attachments.append((f'invoice_{invoice.invoice_number}.pdf', pdf, 'application/pdf'))
-		except Exception:
-			# fallback to HTML attachment
-			attachments.append((f'invoice_{invoice.invoice_number}.html', html_string.encode('utf-8'), 'text/html'))
-
-		email = EmailMessage(subject=subject, body=message, from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', None), to=[client_email])
-		for name, content, mimetype in attachments:
-			email.attach(name, content, mimetype)
-
-		try:
-			email.send()
-			messages.success(request, 'Invoice emailed to client.')
-		except Exception as e:
-			messages.error(request, f'Failed to send email: {e}')
-
-		return redirect('invoice_detail', pk=pk)
-
-	# GET -> show simple send form
-	return render(request, 'invoices/email_invoice.html', {'invoice': invoice})
+	return JsonResponse({'rate': float(rate), 'from': from_currency, 'to': to_currency})
 

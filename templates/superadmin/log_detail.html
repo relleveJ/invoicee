@@ -19,7 +19,7 @@
         <dd class="col-sm-9">{{ log.activity_type }}</dd>
 
         <dt class="col-sm-3">Timestamp</dt>
-        <dd class="col-sm-9">{{ log.timestamp }}</dd>
+        <dd class="col-sm-9">{{ log.timestamp_local|date:"Y-m-d H:i:s T" }}</dd>
 
         <dt class="col-sm-3">Related Invoice</dt>
         <dd class="col-sm-9">{{ log.related_invoice }}</dd>

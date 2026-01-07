@@ -42,13 +42,13 @@
         <tbody>
           {% for c in clients %}
           <tr>
-            <td><input type="checkbox" name="selected_ids" value="{{ c.pk }}" class="client-trash-row" /></td>
-            <td>{{ c.name }}</td>
-            <td>{{ c.email }}</td>
-            <td>{{ c.phone }}</td>
-            <td>{{ c.city }}</td>
-            <td>{{ c.country }}</td>
-            <td>{{ c.deleted_at|timezone:"Asia/Manila" }}</td>
+            <td data-label="Select"><input type="checkbox" name="selected_ids" value="{{ c.pk }}" class="client-trash-row" /></td>
+            <td data-label="Name">{{ c.name }}</td>
+            <td data-label="Email" class="hide-mobile">{{ c.email }}</td>
+            <td data-label="Phone" class="hide-mobile">{{ c.phone }}</td>
+            <td data-label="City" class="hide-mobile">{{ c.city }}</td>
+            <td data-label="Country" class="hide-mobile">{{ c.country }}</td>
+            <td data-label="Deleted At">{{ c.deleted_at|timezone:"Asia/Manila" }}</td>
           </tr>
           {% empty %}
           <tr><td colspan="7">Trash is empty.</td></tr>

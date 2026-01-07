@@ -2,36 +2,44 @@
 
 {% block content %}
 <div class="container mt-5">
+  <style>
+    @media(max-width:767px){
+      .dashboard-card h6 { font-size: .9rem; }
+      .dashboard-card h3 { font-size: 1.25rem; }
+      .dashboard-card { padding: .85rem; }
+      .table-sm td, .table-sm th { font-size: .9rem; }
+    }
+  </style>
   <h1>Dashboard</h1>
   <p>Welcome, {{ request.user.username }}!</p>
 
   <div class="row mt-4">
-    <div class="col-md-3">
-      <div class="card p-3">
+    <div class="col-6 col-md-3">
+      <div class="card p-3 dashboard-card">
         <h6>Total Revenue</h6>
         <h3>{{ total_revenue|default:"0.00" }}</h3>
       </div>
     </div>
-    <div class="col-md-3">
-      <div class="card p-3">
+    <div class="col-6 col-md-3">
+      <div class="card p-3 dashboard-card">
         <h6>Total Invoices</h6>
         <h3>{{ total_invoices }}</h3>
       </div>
     </div>
-    <div class="col-md-2">
-      <div class="card p-3">
+    <div class="col-6 col-md-2">
+      <div class="card p-3 dashboard-card">
         <h6>Paid</h6>
         <h3>{{ paid_count }}</h3>
       </div>
     </div>
-    <div class="col-md-2">
-      <div class="card p-3">
+    <div class="col-6 col-md-2">
+      <div class="card p-3 dashboard-card">
         <h6>Pending</h6>
         <h3>{{ pending_count }}</h3>
       </div>
     </div>
-    <div class="col-md-2">
-      <div class="card p-3">
+    <div class="col-6 col-md-2">
+      <div class="card p-3 dashboard-card">
         <h6>Overdue</h6>
         <h3>{{ overdue_count }}</h3>
       </div>
@@ -41,6 +49,7 @@
   <div class="row mt-4">
     <div class="col-md-6">
       <h5>Recent Invoices</h5>
+      <div class="table-responsive">
       <table class="table table-sm">
         <thead><tr><th>#</th><th>Client</th><th>Date</th><th>Total</th><th>Status</th></tr></thead>
         <tbody>
@@ -57,9 +66,12 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     </div>
     <div class="col-md-6">
+      {% include 'invoices/ads/ad_fragment.html' with ad_id='ad_dashboard_01' placement='dashboard_right' target_url='https://stripe.com' title='Accept payments with Stripe' description='Secure payments, fast payouts, and seamless invoicing.' logo_url='/static/img/stripe.svg' user_context='dashboard' %}
       <h5>Top Clients</h5>
+      <div class="table-responsive">
       <table class="table table-sm">
         <thead><tr><th>Client</th><th>Invoices</th><th>Total</th></tr></thead>
         <tbody>
@@ -74,6 +86,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     </div>
   </div>
 </div>

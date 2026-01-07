@@ -65,6 +65,118 @@
             border-color: var(--border-color);
         }
 
+        /* Improve contrast for common components in dark mode */
+        [data-theme="dark"] {
+            --bg-primary: #0f1113;
+            --bg-secondary: #16181a;
+            --text-primary: #e6eef6;
+            --text-secondary: #b9c2cb;
+            --border-color: #2a2f33;
+            --muted-bg: rgba(255,255,255,0.02);
+            --accent-link: #6ea8ff;
+        }
+
+        /* Buttons */
+        [data-theme="dark"] .btn { color: var(--text-primary); }
+        [data-theme="dark"] .btn-outline-secondary { color: var(--text-primary); border-color: var(--border-color); }
+        [data-theme="dark"] .btn-outline-secondary:hover { background-color: var(--muted-bg); }
+        [data-theme="dark"] .btn-outline-danger { color: #ffb6b6; border-color: #ff6b6b; }
+        [data-theme="dark"] .btn-outline-primary { color: #cfe2ff; border-color: #2b6cb0; }
+
+        /* Links and icons */
+        [data-theme="dark"] a { color: var(--accent-link); }
+        [data-theme="dark"] .theme-toggle { color: var(--text-primary); }
+
+        /* Cards and surfaces */
+        [data-theme="dark"] .card { background-color: var(--bg-secondary); border-color: var(--border-color); }
+        [data-theme="dark"] .container, [data-theme="dark"] .container-fluid { background-color: transparent; }
+
+        /* Dashboard analytics cards: stronger surface and readable headings */
+        [data-theme="dark"] .card.p-3 { background-color: #16191c; border-color: #262a2d; }
+        [data-theme="dark"] .card.p-3 h6 { color: var(--text-secondary); }
+        [data-theme="dark"] .card.p-3 h3 { color: var(--text-primary); }
+        /* Ensure other card heading sizes are readable */
+        [data-theme="dark"] .card h5, [data-theme="dark"] .card h4, [data-theme="dark"] .card h3, [data-theme="dark"] .card h6 { color: var(--text-primary); }
+
+        /* Tables */
+        [data-theme="dark"] table { color: var(--text-primary); }
+        [data-theme="dark"] table thead th { color: var(--text-primary); background-color: transparent; border-bottom-color: var(--border-color); }
+        [data-theme="dark"] table tbody td { border-color: var(--border-color); }
+        [data-theme="dark"] .table-striped tbody tr:nth-of-type(odd) { background-color: rgba(255,255,255,0.01); }
+
+        /* Make table cells fully readable */
+        [data-theme="dark"] table thead th, [data-theme="dark"] table tbody td { color: var(--text-primary); }
+        /* Stronger invoice/table contrast in dark mode */
+        [data-theme="dark"] table.table, [data-theme="dark"] .invoice-list table { background-color: transparent; }
+        [data-theme="dark"] table.table thead th { background-color: #0f1314; color: var(--text-primary); border-bottom: 1px solid var(--border-color); }
+        [data-theme="dark"] table.table tbody td { background-color: transparent; color: var(--text-primary); border-bottom: 1px solid rgba(255,255,255,0.03); }
+        [data-theme="dark"] .table-striped tbody tr:nth-of-type(odd) { background-color: rgba(255,255,255,0.02); }
+
+        /* Totals / invoice item lines */
+        [data-theme="dark"] .line-total, [data-theme="dark"] #subtotal-display, [data-theme="dark"] #tax-display, [data-theme="dark"] #discount-display, [data-theme="dark"] #total-display, [data-theme="dark"] .total-row { color: var(--text-primary); }
+
+        /* Make iframes visible and framed in dark mode */
+        [data-theme="dark"] iframe { background-color: var(--bg-secondary); border: 1px solid var(--border-color); }
+
+        /* Ensure invoice-preview iframe container shows a visible surface */
+        [data-theme="dark"] .card .card-body { background-color: transparent; }
+        /* Invoice-specific list/detail tweaks */
+        [data-theme="dark"] .invoice-list table tbody td { color: var(--text-primary); }
+        [data-theme="dark"] .invoice-list .text-muted { color: var(--text-secondary) !important; }
+        [data-theme="dark"] .invoice-list img { border: 1px solid rgba(255,255,255,0.04); }
+
+        /* Forms */
+        [data-theme="dark"] .form-control, [data-theme="dark"] .form-select, [data-theme="dark"] textarea { background-color: #0d1112; color: var(--text-primary); border-color: var(--border-color); }
+        [data-theme="dark"] .form-control::placeholder { color: #8f98a2; }
+
+        /* Labels and small form text */
+        [data-theme="dark"] label, [data-theme="dark"] .form-label, [data-theme="dark"] .form-text, [data-theme="dark"] .form-check-label { color: var(--text-primary); }
+
+        /* Buttons and links inside invoice editors */
+        [data-theme="dark"] .btn-link { color: var(--accent-link); }
+
+        /* Ensure inputs inside invoice forms in templates are readable */
+        [data-theme="dark"] .invoice-form .form-control, [data-theme="dark"] .invoice-form input, [data-theme="dark"] .invoice-form textarea { background-color: #0f1314; color: var(--text-primary); border-color: var(--border-color); }
+
+        /* Alerts */
+        [data-theme="dark"] .alert { background-color: #121416; color: var(--text-primary); border-color: var(--border-color); }
+
+        /* Pagination */
+        [data-theme="dark"] .page-link { background-color: transparent; color: var(--text-primary); border-color: var(--border-color); }
+
+        /* Sidebar links */
+        [data-theme="dark"] .sidebar { background-color: var(--sidebar-bg); }
+        [data-theme="dark"] .sidebar .nav-link { color: var(--sidebar-text); }
+
+        /* Dropdowns / menu */
+        [data-theme="dark"] .dropdown-menu { background-color: var(--bg-secondary); color: var(--text-primary); border-color: var(--border-color); }
+
+        /* Modal content */
+        [data-theme="dark"] .modal-content { background-color: var(--bg-secondary); color: var(--text-primary); }
+
+        /* Make sure small text like table captions are legible */
+        [data-theme="dark"] small, [data-theme="dark"] .small { color: var(--text-secondary); }
+
+        /* Ad banner adjustments for dark mode */
+        [data-theme="dark"] .ad-banner {
+            background: linear-gradient(135deg, #2b3750 0%, #2a2f3a 100%);
+            color: #e8eef8;
+            box-shadow: none;
+        }
+        [data-theme="dark"] .ad-banner a { color: #cfe2ff; }
+        [data-theme="dark"] .ad-banner .ad-title { color: #ffffff; font-weight:700; }
+        [data-theme="dark"] .ad-banner .ad-desc { color: var(--text-secondary); }
+
+        /* Ad card (small cards used outside banner) */
+        [data-theme="dark"] .ad-card { background-color: #121417; border-color: #24272a; color: var(--text-primary); }
+        [data-theme="dark"] .ad-card .ad-title { color: var(--text-primary); font-weight:700; }
+        [data-theme="dark"] .ad-card .ad-desc { color: var(--text-secondary); }
+        [data-theme="dark"] .ad-card .ad-cta { color: #cfe2ff; border-color: #2b6cb0; }
+        [data-theme="dark"] .ad-card .ad-cta.btn-outline-primary:hover { background-color: rgba(47,106,183,0.12); }
+        [data-theme="dark"] .ad-card .ad-dismiss { color: var(--text-secondary); }
+        /* Ensure Bootstrap muted text is visible in dark */
+        [data-theme="dark"] .text-muted { color: var(--text-secondary) !important; }
+
         .form-control:focus, .form-select:focus {
             background-color: var(--bg-primary);
             color: var(--text-primary);
@@ -89,6 +201,39 @@
         .ad-banner:hover {
             transform: translateY(-2px);
         }
+        /* Make modals and iframe previews responsive on small screens */
+        .modal-body { max-height: 80vh; overflow:auto; }
+        .modal .modal-dialog { max-width: 100%; }
+        @media (max-width: 576px) {
+            .modal-fullscreen-sm-down { width:100%; height:100%; margin:0; }
+            .modal-body iframe { height: calc(60vh); }
+        }
+        /* Mobile friendly tweaks */
+        @media (max-width: 767.98px) {
+            /* Make main content take full width when sidebar is hidden */
+            main[class*="col-"] { padding-left: 12px; padding-right: 12px; }
+            .sidebar { min-height: auto; padding-top: 0.5rem; }
+            .nav .nav-link { padding: 0.65rem 0.75rem; }
+            .container, .container-fluid { padding-left: 8px; padding-right: 8px; }
+            .btn { padding: 0.5rem 0.75rem; }
+            .form-control, .form-select { font-size: 0.95rem; }
+            /* Improve touch targets for small screens */
+            .nav .nav-link { font-size: 1rem; }
+        }
+        /* Responsive tables: convert to stacked cards on narrow screens */
+        @media (max-width: 767.98px) {
+            .table-responsive table thead { display: none; }
+            .table-responsive table, .table-responsive tbody, .table-responsive tr, .table-responsive td { display: block; width: 100%; }
+            .table-responsive tr { margin-bottom: 0.75rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; }
+            .table-responsive td { box-sizing: border-box; padding: 0.4rem 0.25rem; white-space: normal; }
+            .table-responsive td[data-label]:before { content: attr(data-label) ': '; font-weight:600; display: inline-block; width: 32%; }
+            .table-responsive td.actions { padding-top: 0.25rem; }
+            .table-responsive td .btn { display:block; width:100%; margin-bottom:0.5rem; }
+        }
+        /* Ensure offcanvas appears above other elements on some Android browsers */
+        .offcanvas {
+            z-index: 1080;
+        }
     </style>
     {% block extra_css %}{% endblock %}
 </head>
@@ -96,14 +241,80 @@
     {% if user.is_authenticated %}
     <div class="container-fluid">
         <div class="row">
-            <!-- Sidebar -->
-            <nav class="col-md-2 d-md-block sidebar">
+            <!-- Mobile topbar: visible only on small screens, provides menu button and theme toggle -->
+            <div class="d-md-none w-100 bg-light border-bottom" style="position:sticky;top:0;z-index:1070;">
+                <div class="d-flex align-items-center justify-content-between p-2">
+                    <button id="mobileSidebarToggle" class="btn btn-sm btn-outline-secondary" type="button" aria-label="Menu">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <div class="text-center flex-grow-1"><strong>Invoice Maker</strong></div>
+                    <div class="d-flex align-items-center">
+                        <span class="theme-toggle" onclick="toggleTheme()"><i class="fas fa-moon" id="theme-icon"></i></span>
+                    </div>
+                </div>
+            </div>
+            <!-- Sidebar (desktop) -->
+            <nav class="col-md-2 d-none d-md-block sidebar">
                 <div class="position-sticky pt-3">
                     <div class="text-center mb-4">
-                        <h4>Invoice Maker</h4>
-                        <span class="theme-toggle" onclick="toggleTheme()">
-                            <i class="fas fa-moon" id="theme-icon"></i>
-                        </span>
+                        <div class="d-flex justify-content-between align-items-center px-2">
+                            <h4 class="m-0">Invoice Maker</h4>
+                            <div class="d-flex align-items-center">
+                                <button class="btn btn-sm btn-outline-secondary d-md-none me-2" type="button" id="mobileSidebarToggleSmall" aria-label="Menu">
+                                    <i class="fas fa-bars"></i>
+                                </button>
+                                <span class="theme-toggle ms-2" onclick="toggleTheme()">
+                                    <i class="fas fa-moon" id="theme-icon"></i>
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    <ul class="nav flex-column">
+                        <li class="nav-item">
+                            <a class="nav-link mobile-offcanvas-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}" href="{% url 'dashboard' %}">
+                                <i class="fas fa-home me-2"></i> Dashboard
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link mobile-offcanvas-link {% if 'client' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'client_list' %}">
+                                <i class="fas fa-users me-2"></i> Clients
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link mobile-offcanvas-link {% if 'invoice' in request.resolver_match.url_name %}active{% endif %}" href="{% url 'invoice_list' %}">
+                                <i class="fas fa-file-invoice me-2"></i> Invoices
+                            </a>
+                        </li>
+                        {% if user.is_superuser %}
+                        <li class="nav-item">
+                            <a class="nav-link mobile-offcanvas-link {% if request.resolver_match.url_name == 'superadmin_dashboard' %}active{% endif %}" href="{% url 'superadmin_dashboard' %}">
+                                <i class="fas fa-user-shield me-2"></i> Superadmin
+                            </a>
+                        </li>
+                        {% endif %}
+                        <li class="nav-item">
+                            <a class="nav-link mobile-offcanvas-link" href="{% url 'business_profile_setup' %}">
+                                <i class="fas fa-building me-2"></i> Business Profile
+                            </a>
+                        </li>
+                        <li class="nav-item mt-3">
+                            <a class="nav-link text-danger mobile-offcanvas-link" href="{% url 'logout' %}">
+                                <i class="fas fa-sign-out-alt me-2"></i> Logout
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </nav>
+
+            <!-- Mobile sidebar (offcanvas) -->
+            <div class="offcanvas offcanvas-start d-md-none" tabindex="-1" id="mobileSidebar" aria-labelledby="mobileSidebarLabel">
+                <div class="offcanvas-header">
+                    <h5 class="offcanvas-title" id="mobileSidebarLabel">Menu</h5>
+                    <button type="button" class="btn-close text-reset mobile-offcanvas-close" aria-label="Close"></button>
+                </div>
+                <div class="offcanvas-body sidebar">
+                    <div class="text-center mb-3">
+                        <h5>Invoice Maker</h5>
                     </div>
                     <ul class="nav flex-column">
                         <li class="nav-item">
@@ -140,7 +351,7 @@
                         </li>
                     </ul>
                 </div>
-            </nav>
+            </div>
 
             <!-- Main content -->
             <main class="col-md-10 ms-sm-auto px-md-4">
@@ -183,6 +394,16 @@
             
             const icon = document.getElementById('theme-icon');
             icon.className = newTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+            // Propagate theme to same-origin iframes (invoice preview iframe)
+            try{
+                document.querySelectorAll('iframe').forEach(function(iframe){
+                    try{
+                        if (iframe && iframe.contentWindow && iframe.contentWindow.document && iframe.contentWindow.document.documentElement) {
+                            iframe.contentWindow.document.documentElement.setAttribute('data-theme', newTheme);
+                        }
+                    }catch(e){}
+                });
+            }catch(e){}
         }
 
         // Load saved theme
@@ -193,6 +414,16 @@
             if (icon) {
                 icon.className = savedTheme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
             }
+            // Ensure any same-origin iframe previews pick up the saved theme
+            try{
+                document.querySelectorAll('iframe').forEach(function(iframe){
+                    try{
+                        if (iframe && iframe.contentWindow && iframe.contentWindow.document && iframe.contentWindow.document.documentElement) {
+                            iframe.contentWindow.document.documentElement.setAttribute('data-theme', savedTheme);
+                        }
+                    }catch(e){}
+                });
+            }catch(e){}
         });
 
         // Ad click tracking
@@ -214,6 +445,58 @@
                 window.open(url, '_blank');
             });
         }
+    </script>
+    <script>
+        // Mobile offcanvas open/close without using Bootstrap API to avoid
+        // initialization/backdrop errors on some browsers.
+        document.addEventListener('DOMContentLoaded', function(){
+            try{
+                var mobileSidebar = document.getElementById('mobileSidebar');
+                var toggle = document.getElementById('mobileSidebarToggle');
+                var toggleSmall = document.getElementById('mobileSidebarToggleSmall');
+                var closeBtn = mobileSidebar ? mobileSidebar.querySelector('.mobile-offcanvas-close') : null;
+                var prevBodyOverflow = null;
+
+                function createBackdrop(){
+                    var b = document.createElement('div');
+                    b.id = 'mobileSidebarBackdrop';
+                    b.className = 'offcanvas-backdrop fade show';
+                    b.addEventListener('click', closeMobileSidebar);
+                    document.body.appendChild(b);
+                }
+
+                function removeBackdrop(){
+                    var b = document.getElementById('mobileSidebarBackdrop');
+                    if (b) try{ b.remove(); }catch(e){}
+                }
+
+                function openMobileSidebar(){
+                    if (!mobileSidebar) return;
+                    if (mobileSidebar.classList.contains('show')) return;
+                    // lock body scroll
+                    try{ prevBodyOverflow = document.body.style.overflow; document.body.style.overflow = 'hidden'; }catch(e){}
+                    mobileSidebar.classList.add('show');
+                    createBackdrop();
+                }
+
+                function closeMobileSidebar(){
+                    if (!mobileSidebar) return;
+                    mobileSidebar.classList.remove('show');
+                    removeBackdrop();
+                    try{ document.body.style.overflow = prevBodyOverflow || ''; }catch(e){}
+                }
+
+                if (toggle) toggle.addEventListener('click', openMobileSidebar);
+                if (toggleSmall) toggleSmall.addEventListener('click', openMobileSidebar);
+                if (closeBtn) closeBtn.addEventListener('click', closeMobileSidebar);
+
+                // close when any mobile offcanvas link is clicked
+                if (mobileSidebar) {
+                    var links = mobileSidebar.querySelectorAll('a.mobile-offcanvas-link');
+                    links.forEach(function(a){ a.addEventListener('click', closeMobileSidebar); });
+                }
+            }catch(e){/* ignore */}
+        });
     </script>
     {% block extra_js %}{% endblock %}
 </body>

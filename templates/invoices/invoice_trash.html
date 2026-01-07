@@ -40,11 +40,11 @@
         <tbody>
           {% for invoice in invoices %}
           <tr>
-            <td><input type="checkbox" name="selected_ids" value="{{ invoice.pk }}" class="invoice-trash-row" /></td>
-            <td>{{ invoice.invoice_number }}</td>
-            <td>{{ invoice.client_name }}</td>
-            <td>{{ invoice.deleted_at|timezone:"Asia/Manila" }}</td>
-              <td class="text-end">
+            <td data-label="Select"><input type="checkbox" name="selected_ids" value="{{ invoice.pk }}" class="invoice-trash-row" /></td>
+            <td data-label="Invoice">{{ invoice.invoice_number }}</td>
+            <td data-label="Client">{{ invoice.client_name }}</td>
+            <td data-label="Deleted At" class="hide-mobile">{{ invoice.deleted_at|timezone:"Asia/Manila" }}</td>
+              <td data-label="Actions" class="actions">
                 <a href="{% url 'invoice_trash_view' invoice.pk %}" class="btn btn-sm btn-outline-primary">View</a>
               </td>
           </tr>

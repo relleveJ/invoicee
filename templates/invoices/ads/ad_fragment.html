@@ -1,0 +1,61 @@
+<div class="card ad-card mb-2" style="max-width:400px; font-size:0.95rem;" data-ad-id="{{ ad_id }}" data-ad-placement="{{ placement }}" data-ad-target="{{ target_url }}" data-ad-context="{{ user_context|default:'' }}" data-invoice-id="{{ invoice_id|default:'' }}">
+  <div class="card-body d-flex gap-2 align-items-start">
+    <div style="flex:0 0 54px;">
+      <!-- sponsor badge / logo placeholder -->
+      <img src="{{ logo_url|default:'/static/img/ad-placeholder.png' }}" alt="{{ ad_id }}" style="width:48px;height:48px;border-radius:6px;object-fit:cover;" />
+    </div>
+    <div style="flex:1 1 auto;">
+      <div class="ad-title" style="font-weight:600;margin-top:2px;">{{ title|default:"Recommended for your business" }}</div>
+      <div class="ad-desc text-muted" style="font-size:0.85rem;margin-top:4px;">{{ description|default:"Tools and services to streamline invoicing and payments." }}</div>
+      <div class="mt-2 d-flex gap-2">
+        <a href="{{ target_url }}" class="btn btn-sm btn-outline-primary ad-cta" target="_blank" rel="noopener noreferrer">Learn more</a>
+        <a href="#" class="btn btn-sm btn-link text-muted ad-dismiss">Dismiss</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  try{
+    const card = document.currentScript ? document.currentScript.previousElementSibling : null;
+    // attach click handlers (non-blocking) using data attributes
+    const parent = (card && card.closest && card) || null;
+    const root = parent || document.querySelector('.ad-card[data-ad-id="{{ ad_id }}"]');
+    if (!root) return;
+    const cta = root.querySelector('.ad-cta');
+    const dismiss = root.querySelector('.ad-dismiss');
+    function track(payload){
+      try{
+        const p = JSON.stringify(payload || {});
+        if (navigator.sendBeacon){
+          navigator.sendBeacon('/track-ad-click/', p);
+        } else {
+          fetch('/track-ad-click/', {method:'POST', body:p, headers:{'Content-Type':'application/json'}, keepalive:true}).catch(()=>{});
+        }
+      }catch(e){}
+    }
+    if (cta){
+      cta.addEventListener('click', function(ev){
+        const payload = {
+          ad_id: root.dataset.adId || '',
+          placement: root.dataset.adPlacement || '',
+          url: this.href || root.dataset.adTarget || '',
+          user_context: root.dataset.adContext || '',
+          invoice_id: root.dataset.invoiceId || ''
+        };
+        track(payload);
+        // do not prevent navigation; open in new tab as link target=_blank
+      });
+    }
+    if (dismiss){
+      dismiss.addEventListener('click', function(ev){
+        ev.preventDefault();
+        // lightweight local dismissal: hide and track negative signal
+        root.style.display = 'none';
+        track({ ad_id: root.dataset.adId || '', placement: root.dataset.adPlacement || '', url: '', user_context: root.dataset.adContext || '', invoice_id: root.dataset.invoiceId || '' });
+      });
+    }
+  }catch(e){ console.warn(e); }
+})();
+</script>

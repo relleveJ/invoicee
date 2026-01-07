@@ -69,6 +69,10 @@
                     {% csrf_token %}
                     <button class="btn btn-sm {% if u.is_active %}btn-outline-danger{% else %}btn-outline-success{% endif %}" type="submit">{% if u.is_active %}Deactivate{% else %}Activate{% endif %}</button>
                   </form>
+                  <form method="post" action="{% url 'superadmin_delete_user' u.id %}" style="display:inline-block; margin-left:6px;">
+                    {% csrf_token %}
+                    <button class="btn btn-sm btn-outline-danger" type="submit" onclick="return confirm('Delete user and all owned data?')">Delete</button>
+                  </form>
                 </td>
               </tr>
               {% empty %}
@@ -108,10 +112,18 @@
             <tbody>
               {% for log in logs_page %}
                 <tr>
-                  <td>{{ log.timestamp }}</td>
+                  <td>{{ log.timestamp_local|date:"Y-m-d H:i:s T" }}</td>
                   <td>{{ log.user_id }}</td>
                   <td><a href="{% url 'superadmin_log_detail' log.activity_id %}">{{ log.activity_type }}</a></td>
-                  <td>{% if log.related_invoice %}<a href="{% url 'invoice_detail' log.related_invoice %}">{{ log.related_invoice }}</a>{% else %}-{% endif %}</td>
+                  <td>
+                    {% if log.related_invoice_link %}
+                      <a href="{{ log.related_invoice_link }}">{{ log.related_invoice }}</a>
+                    {% elif log.related_invoice %}
+                      {{ log.related_invoice }}
+                    {% else %}
+                      -
+                    {% endif %}
+                  </td>
                 </tr>
               {% empty %}
                 <tr><td colspan="4">No activity logs.</td></tr>

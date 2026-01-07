@@ -17,10 +17,18 @@
       <tbody>
       {% for log in logs_page %}
         <tr>
-          <td>{{ log.timestamp }}</td>
+          <td>{{ log.timestamp_local|date:"Y-m-d H:i:s T" }}</td>
           <td>{{ log.user_id }}</td>
           <td>{{ log.activity_type }}</td>
-          <td>{% if log.related_invoice %}<a href="{% url 'invoice_detail' log.related_invoice %}">{{ log.related_invoice }}</a>{% else %}-{% endif %}</td>
+          <td>
+            {% if log.related_invoice_link %}
+              <a href="{{ log.related_invoice_link }}">{{ log.related_invoice }}</a>
+            {% elif log.related_invoice %}
+              {{ log.related_invoice }}
+            {% else %}
+              -
+            {% endif %}
+          </td>
         </tr>
       {% empty %}
         <tr><td colspan="4">No activity logs.</td></tr>

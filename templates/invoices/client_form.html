@@ -26,3 +26,19 @@
   </form>
 </div>
 {% endblock %}
+
+{% block extra_css %}
+<style>
+  .two-col-form label { display:block; margin-bottom:6px; font-weight:600; }
+  .two-col-form input, .two-col-form textarea, .two-col-form select { width:100%; box-sizing:border-box; }
+  .two-col-form .mb-3 { padding-right:0; }
+  @media(min-width:768px){
+    .two-col-form .mb-3 { width:48%; float:left; padding-right:12px; }
+    .two-col-form .mb-3.full-width { width:100%; clear:both; padding-right:0; }
+  }
+  /* Make buttons stack nicely on small screens */
+  @media(max-width:576px){
+    .two-col-form .btn { display:block; width:100%; margin-bottom:8px; }
+  }
+</style>
+{% endblock %}

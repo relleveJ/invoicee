@@ -5,7 +5,7 @@
     <div class="col-md-9">
         <h1>{{ action }} Invoice</h1>
         
-                <form method="post" id="invoice-form" enctype="multipart/form-data" action="{% if action == 'Create' %}{% url 'invoice_create' %}{% else %}{% if form.instance.pk %}{% url 'invoice_edit' form.instance.pk %}{% else %}{% url 'invoice_create' %}{% endif %}{% endif %}">
+                <form method="post" id="invoice-form" class="invoice-form" enctype="multipart/form-data" action="{% if action == 'Create' %}{% url 'invoice_create' %}{% else %}{% if form.instance.pk %}{% url 'invoice_edit' form.instance.pk %}{% else %}{% url 'invoice_create' %}{% endif %}{% endif %}">
                         {% csrf_token %}
                                 <input type="hidden" name="template" id="id_template" value="{{ invoice.template_choice|default:'1' }}" />
                         <style>
@@ -56,9 +56,21 @@
                             #items-table td:nth-child(3) { text-align:right; }
                             #items-table td.total-cell { text-align:right; }
 
-                            /* Small screens: reduce input width to avoid wrapping */
+                            /* Small screens: reduce input width to avoid wrapping and provide stacked card view */
                             @media(max-width:767px){
                                 #items-table input[name$='-quantity'], #items-table input[name$='-unit_price'] { width:80px; }
+                            }
+
+                            /* Mobile stacked view for invoice items: convert rows into card-like blocks */
+                            @media(max-width:767px){
+                                #items-table thead { display:none; }
+                                #items-table, #items-table tbody, #items-table tr, #items-table td { display:block; width:100%; }
+                                #items-table tr { margin-bottom:.7rem; border:1px solid #eef0f2; padding:.6rem; border-radius:6px; }
+                                #items-table td { padding:.35rem 0; }
+                                #items-table td[data-label]::before { content: attr(data-label) ": "; font-weight:600; color:#6c757d; display:inline-block; width:40%; }
+                                #items-table td.delete-cell { text-align:right; }
+                                #items-table input[name$='-quantity'], #items-table input[name$='-unit_price'] { width:120px; float:right; text-align:right; }
+                                #items-table .line-total { float:right; font-weight:600; }
                             }
 
                             /* Row padding consistency */
@@ -199,11 +211,11 @@
                             {% for form in formset %}
                             <tr class="item-row">
                                 {{ form.id }}
-                                <td>{{ form.description }}</td>
-                                <td>{{ form.quantity }}</td>
-                                <td>{{ form.unit_price }}</td>
-                                <td><span class="line-total">$0.00</span></td>
-                                <td class="delete-cell">{{ form.DELETE }}</td>
+                                <td data-label="Description">{{ form.description }}</td>
+                                <td data-label="Quantity">{{ form.quantity }}</td>
+                                <td data-label="Unit Price">{{ form.unit_price }}</td>
+                                <td data-label="Total"><span class="line-total">$0.00</span></td>
+                                <td class="delete-cell" data-label="Delete">{{ form.DELETE }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -211,11 +223,11 @@
                         <tbody id="empty-form-template" style="display:none">
                             <tr class="item-row">
                                 {{ formset.empty_form.id }}
-                                <td>{{ formset.empty_form.description }}</td>
-                                <td>{{ formset.empty_form.quantity }}</td>
-                                <td>{{ formset.empty_form.unit_price }}</td>
-                                <td><span class="line-total">$0.00</span></td>
-                                <td class="delete-cell">{{ formset.empty_form.DELETE }}</td>
+                                <td data-label="Description">{{ formset.empty_form.description }}</td>
+                                <td data-label="Quantity">{{ formset.empty_form.quantity }}</td>
+                                <td data-label="Unit Price">{{ formset.empty_form.unit_price }}</td>
+                                <td data-label="Total"><span class="line-total">$0.00</span></td>
+                                <td class="delete-cell" data-label="Delete">{{ formset.empty_form.DELETE }}</td>
                             </tr>
                         </tbody>
                     </table>
@@ -233,7 +245,7 @@
             <div class="card mb-4">
                 <div class="card-body">
                     <div class="row justify-content-end">
-                        <div class="col-md-4">
+                        <div class="col-12 col-md-4">
                             <div class="d-flex justify-content-between mb-2">
                                 <strong>Subtotal:</strong>
                                 <span id="subtotal-display">$0.00</span>
@@ -285,7 +297,7 @@
     <div class="col-md-3">
         <div class="card mb-3">
                 <div class="card-body">
-                    <h5>Live Previews</h5>
+                    <h5>Live Preview</h5>
                     <!-- Template selector moved into the preview block to avoid overlap -->
                     <div id="invoice-preview">
                         <div class="d-flex justify-content-between align-items-start mb-2">
@@ -293,7 +305,7 @@
                                 <strong id="preview-inv-number">{{ form.invoice_number.value|default:'' }}</strong>
                                 <div><small id="preview-timestamp" class="text-muted"></small></div>
                             </div>
-                            <div id="template-selector" style="display:flex; gap:6px; align-items:center;">
+                            <div id="template-selector" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
                                 {% if invoice_templates %}
                                     {% for tpl in invoice_templates %}
                                         <button type="button" class="btn btn-sm btn-outline-secondary template-btn" data-template="{{ tpl.template_id }}">{{ tpl.template_name }}</button>
@@ -330,7 +342,7 @@
                         <div class="mt-2 d-flex align-items-center">
                             <img id="preview-business-logo" src="" alt="Business logo preview" style="max-width:140px; max-height:80px; display:none; border-radius:4px; margin-right:12px;" />
                             <div id="preview-business-info" style="display:inline-block;">
-                                <div id="preview-business-name" style="font-weight:600;color:#333;"></div>
+                                <div id="preview-business-name" style="font-weight:600;color:inherit;"></div>
                                 <div id="preview-business-address" class="text-muted small"></div>
                             </div>
                         </div>
@@ -342,15 +354,32 @@
                             <div><strong>Total: <span id="preview-total">$0.00</span></strong></div>
                         </div>
                         <div id="invoice-preview-mini"></div>
-                        <iframe id="invoice-preview-iframe" sandbox="allow-scripts" style="width:100%; height:360px; border:1px solid #e6e6e6; display:none; transform-origin:0 0;" ></iframe>
+                        <style>
+                            /* Sidebar preview iframe: constrained and responsive */
+                            #invoice-preview-iframe { width: 100%; height: 360px; max-height: 60vh; border: 1px solid #e6e6e6; display: none; transform-origin: 0 0; }
+                            @media (max-width: 767px) {
+                                #invoice-preview-iframe { height: 260px; }
+                            }
+
+                            /* Force light text inside the live preview container when dark theme is active.
+                               The mini preview uses inline styles for muted text; override them with !important. */
+                            [data-theme="dark"] #invoice-preview, [data-theme="dark"] #invoice-preview * {
+                                color: var(--text-primary) !important;
+                                background: transparent !important;
+                            }
+                            [data-theme="dark"] #invoice-preview table thead th, [data-theme="dark"] #invoice-preview table tbody td {
+                                color: var(--text-primary) !important;
+                            }
+                            [data-theme="dark"] #invoice-preview .text-muted, [data-theme="dark"] #invoice-preview small { color: var(--text-secondary) !important; }
+                        </style>
+                        <iframe id="invoice-preview-iframe" sandbox="allow-same-origin allow-scripts"></iframe>
                     </div>
                 </div>
         </div>
 
-        <div class="ad-banner mb-3" onclick="trackAdClick('ad-sidebar-001', 'sidebar', 'https://example.com/invoicing-tips')">
-            <h5><i class="fas fa-lightbulb me-2"></i>Pro Tips</h5>
-            <p>Learn how to create professional invoices that get paid faster!</p>
-        </div>
+        {% load static %}
+        {% include 'invoices/ads/ad_fragment.html' with ad_id='ad-sidebar-001' placement='sidebar_invoice_creation' target_url='https://www.score.org/resource/invoicing' title='Pro Tips — Improve invoice turnaround' description='Learn simple techniques to create professional invoices that get paid faster.' logo_url='/static/img/smallbiz-guide.svg' user_context='creating_invoice' invoice_id=None %}
+        <script src="{% static 'js/ad_tracker.js' %}"></script>
 
         <div class="card mt-3">
             <div class="card-body">
@@ -361,26 +390,7 @@
                         <a href="{% url 'business_profile_setup' %}" class="btn btn-sm btn-outline-primary w-100 mb-2">
                             <i class="fas fa-briefcase me-2"></i>Edit Business Profile
                         </a>
-                        <!-- Prominent Templates button for visibility on all pages -->
-                        <div class="dropdown d-grid">
-                            <button id="quick-templates-btn" type="button" class="btn btn-primary btn-sm mt-2" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">
-                                <i class="fas fa-th-large me-2"></i>Templates
-                            </button>
-                            <!-- dropdown menu for quick button; items mirrored from sidebar dropdown -->
-                            <ul class="dropdown-menu" id="quick-templates-dropdown" style="min-width:200px;">
-                            {% if invoice_templates %}
-                                {% for tpl in invoice_templates %}
-                                    <li><a class="dropdown-item template-dropdown-item" href="#" data-template="{{ tpl.template_id }}">{{ tpl.template_name }}</a></li>
-                                {% endfor %}
-                            {% else %}
-                                <li><a class="dropdown-item template-dropdown-item" href="#" data-template="1">Template 1</a></li>
-                                <li><a class="dropdown-item template-dropdown-item" href="#" data-template="2">Template 2</a></li>
-                                <li><a class="dropdown-item template-dropdown-item" href="#" data-template="3">Template 3</a></li>
-                                <li><a class="dropdown-item template-dropdown-item" href="#" data-template="4">Template 4</a></li>
-                                <li><a class="dropdown-item template-dropdown-item" href="#" data-template="5">Template 5</a></li>
-                            {% endif %}
-                            </ul>
-                        </div>
+                        
             </div>
         </div>
     </div>
@@ -398,6 +408,9 @@
                                             <!-- preview content inserted here -->
                                             <style>
                                                 #invoice-preview-modal-body { position: relative; }
+                                                /* Ensure modal header and close button remain above iframe blocker on small screens */
+                                                #invoice-preview-modal .modal-header { position: relative; z-index: 1060; }
+                                                #invoice-preview-modal .btn-close { position: relative; z-index: 1065; }
                                             </style>
             </div>
             <div class="modal-footer">
@@ -549,7 +562,6 @@
             tplBtns.forEach(b => {
                 b.addEventListener('click', function(){
                     window.SELECTED_TEMPLATE = this.dataset.template || '1';
-                    try { applySidebarTemplateStyle(window.SELECTED_TEMPLATE); } catch(e) {}
                     // update active styles
                     tplBtns.forEach(x => x.classList.remove('btn-primary'));
                     tplBtns.forEach(x => x.classList.add('btn-outline-secondary'));
@@ -557,9 +569,9 @@
                     this.classList.add('btn-primary');
                     // update hidden form value
                     try { document.getElementById('id_template').value = window.SELECTED_TEMPLATE; } catch(e) {}
-                    // trigger immediate preview refresh
-                    try { updateSidebarPreview(); } catch(e) { console.warn('updateSidebarPreview failed', e); }
-                    try { ensureLatestPreviewAndRender(); } catch(e) {}
+                    // trigger preview refresh: schedule server fetch and if right-drawer open render immediately
+                    try { scheduleSidebarUpdate(100); } catch(e) {}
+                    try { if (document.getElementById('right-preview-drawer') && document.getElementById('right-preview-drawer').classList.contains('open')) { ensureLatestPreviewAndRender(); } } catch(e) {}
                 });
             });
             // mark the saved template as active (or fallback to first button)
@@ -569,42 +581,9 @@
                 tplBtns.forEach(x => x.classList.add('btn-outline-secondary'));
                 activeBtn.classList.remove('btn-outline-secondary');
                 activeBtn.classList.add('btn-primary');
-                try { applySidebarTemplateStyle(window.SELECTED_TEMPLATE); } catch(e) {}
                 try { document.getElementById('id_template').value = window.SELECTED_TEMPLATE; } catch(e) {}
             }
         } catch (e) {}
-
-        // Dropdown/template list items should also update the selected template
-        try {
-            const tplDropdownItems = document.querySelectorAll('.template-dropdown-item');
-            tplDropdownItems.forEach(a => {
-                a.addEventListener('click', function(ev){
-                    ev.preventDefault();
-                    const tpl = this.dataset.template || '1';
-                    window.SELECTED_TEMPLATE = tpl;
-                    try { applySidebarTemplateStyle(window.SELECTED_TEMPLATE); } catch(e) {}
-                    try { document.getElementById('id_template').value = tpl; } catch(e) {}
-                    // sync button styles
-                    try {
-                        const btns = document.querySelectorAll('.template-btn');
-                        btns.forEach(x => { x.classList.remove('btn-primary'); x.classList.add('btn-outline-secondary'); });
-                        const active = document.querySelector('.template-btn[data-template="' + tpl + '"]');
-                        if (active) { active.classList.remove('btn-outline-secondary'); active.classList.add('btn-primary'); }
-                    } catch(e) {}
-                    // trigger immediate preview refresh
-                    try { updateSidebarPreview(); } catch(e) { console.warn('updateSidebarPreview failed', e); }
-                    try { ensureLatestPreviewAndRender(); } catch(e) {}
-                    // close any open dropdown toggles (works with Bootstrap toggle buttons)
-                    try {
-                        const dd = this.closest('.dropdown');
-                        if (dd) {
-                            const toggle = dd.querySelector('[data-bs-toggle="dropdown"]');
-                            if (toggle) toggle.click();
-                        }
-                    } catch(e) {}
-                });
-            });
-        } catch(e) {}
 
         // attach toggle handler for right-preview drawer button
         try {
@@ -694,7 +673,6 @@
                 }
             }
 
-            
             // include client snapshot editable fields (override fetched data when present)
             try {
                 const cName = (document.getElementById('id_client_name') || {}).value || '';
@@ -826,36 +804,17 @@
         try {
             const container = document.getElementById('invoice-preview');
             if (!container) return;
-            const tpl = (window.SELECTED_TEMPLATE || (container && container.dataset && container.dataset.template) || '1').toString();
             const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-            // Variant styles per template
-            let accent = '#333';
-            let headerWeight = '700';
-            let logoFirst = true;
-            let compact = false;
-            switch(tpl) {
-                case '2': accent = '#0d6efd'; headerWeight = '800'; break;
-                case '3': accent = '#198754'; logoFirst = false; break;
-                case '4': accent = '#6f42c1'; compact = true; break;
-                case '5': accent = '#d63384'; headerWeight = '600'; break;
-                default: break;
-            }
-
             let html = '';
             html += '<div class="d-flex justify-content-between"><div style="width:55%">';
-            if (logoFirst) {
-                if (d.business && d.business.logo) html += '<img src="'+esc(d.business.logo)+'" style="max-width:120px; max-height:60px; display:inline-block; margin-right:8px;" />';
-                html += '<div style="font-weight:' + headerWeight + '; color:' + accent + ';">'+esc(d.business.business_name || '')+'</div>';
-            } else {
-                html += '<div style="font-weight:' + headerWeight + '; color:' + accent + ';">'+esc(d.business.business_name || '')+'</div>';
-                if (d.business && d.business.logo) html += '<img src="'+esc(d.business.logo)+'" style="max-width:120px; max-height:60px; display:inline-block; margin-left:8px; float:right;" />';
-            }
+            if (d.business && d.business.logo) html += '<img src="'+esc(d.business.logo)+'" style="max-width:120px; max-height:60px; display:inline-block; margin-right:8px;" />';
+            html += '<div style="font-weight:600;">'+esc(d.business.business_name || '')+'</div>';
             if (d.business && (d.business.address || d.business.email || d.business.phone)) {
                 html += '<div style="font-size:12px;color:#666">'+esc(d.business.address || '') + (d.business.email ? '<br/>'+esc(d.business.email) : '') + (d.business.phone ? '<br/>'+esc(d.business.phone) : '') +'</div>';
             }
             html += '</div>';
             html += '<div style="text-align:right; width:40%">';
-            html += '<div style="font-weight:' + headerWeight + '; font-size:' + (compact ? '0.98rem' : '1.05rem') + '; color:' + accent + '">INVOICE</div>';
+            html += '<div style="font-weight:700; font-size:1.05rem">INVOICE</div>';
             html += '<div style="font-size:12px">Invoice #: <span class="preview-invoice-number">'+esc(d.invoice_number)+'</span></div>';
             html += '<div style="font-size:12px">Date: '+esc(d.invoice_date)+'</div>';
             html += '<div style="font-size:12px">Due: '+esc(d.due_date)+'</div>';
@@ -1206,55 +1165,39 @@
             const data = await serializePreviewData();
             // ensure template set
             if (!data.template) data.template = window.SELECTED_TEMPLATE || '1';
-            console.debug('updateSidebarPreview: posting preview for template=', data.template);
-            // add cache-busting to ensure server returns latest rendered template
-            const fetchUrl = '{% url "invoice_live_preview" %}?format=html&template=' + encodeURIComponent(window.SELECTED_TEMPLATE||'1') + '&cb=' + Date.now();
-            const resp = await fetch(fetchUrl, {
+            const resp = await fetch('{% url "invoice_live_preview" %}?format=html', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf(), 'Accept': 'text/html' },
                 body: JSON.stringify(data)
             });
             if (!resp.ok) return;
-            const html = await resp.text();
-            // log server-returned HTML tail so we can confirm server-side template marker
-            try { console.debug('updateSidebarPreview: server html tail ->', html.slice(-300)); } catch(e) {}
-            // Ensure base href present so relative asset paths in returned HTML resolve
-            const baseHref = (window.location && window.location.origin) ? (window.location.origin + '/') : '/';
-            let modifiedHtml = html || '';
-            try {
-                if (/<head[^>]*>/i.test(modifiedHtml)) {
-                    modifiedHtml = modifiedHtml.replace(/<head([^>]*)>/i, function(m, g){ return '<head' + (g||'') + '<base href="' + baseHref + '">'; });
-                } else if (/<html[^>]*>/i.test(modifiedHtml)) {
-                    modifiedHtml = modifiedHtml.replace(/<html([^>]*)>/i, function(m,g){ return '<html' + (g||'') + '><head><base href="' + baseHref + '"></head>'; });
+            let html = await resp.text();
+            // force a light, high-contrast wrapper so sidebar preview remains readable in dark mode
+            try{
+                const lightStyles = '<style>html,body{background:#fff!important;color:#111!important;} table,th,td{color:#111!important;} .totals{background:#fff!important;color:#111!important;border:1px solid #e6e6e6!important;}</style>';
+                // If returned HTML already contains <head>, insert styles there; otherwise prepend
+                if (/<head[^>]*>/i.test(html)) {
+                    html = html.replace(/<head([^>]*)>/i, '<head$1>' + lightStyles);
+                } else if (/<body[^>]*>/i.test(html)) {
+                    html = html.replace(/<body([^>]*)>/i, '<body$1>' + lightStyles);
                 } else {
-                    modifiedHtml = '<!doctype html><html><head><base href="' + baseHref + '"></head><body>' + modifiedHtml + '</body></html>';
+                    html = lightStyles + html;
                 }
-            } catch (e) {
-                // ignore replacement errors and fall back to raw html
-            }
-
-            // Use server-returned HTML (no debug comment appended in production)
-            const html_with_comment = modifiedHtml;
-            // Prefer srcdoc (keeps length limits lower and handles base-relative assets when present)
-            try {
-                try { iframe.src = 'about:blank'; } catch(e) {}
-                iframe.srcdoc = html_with_comment;
-                console.debug('updateSidebarPreview: wrote iframe.srcdoc with', comment, 'len=', html_with_comment.length);
-            } catch (e) {
-                // Fallback to data URI if srcdoc isn't supported
-                try {
-                    const dataUri = 'data:text/html;charset=utf-8,' + encodeURIComponent(html_with_comment);
-                    iframe.src = dataUri;
-                    console.debug('updateSidebarPreview: fallback wrote iframe.src (data URI) with', comment);
-                } catch (ee) { console.warn('both srcdoc and data-uri injection failed', ee); }
-            }
+            }catch(e){ /* ignore */ }
+            // use srcdoc for sandboxed preview; scale down for sidebar
+            iframe.srcdoc = html;
             // show iframe and hide mini textual preview
             mini.style.display = 'none';
             iframe.style.display = 'block';
-            // scale down for a compact view (adjust as needed)
-            iframe.style.transform = 'scale(0.65)';
-            iframe.style.height = (360 / 0.65) + 'px';
-            iframe.style.width = '100%';
+            // scale down for a compact view (adjust based on container width)
+            try{
+                const containerWidth = iframe.parentElement ? iframe.parentElement.clientWidth : 300;
+                const previewWidth = 760; // approximate full preview width
+                const scale = Math.min(1, Math.max(0.45, containerWidth / previewWidth));
+                iframe.style.transform = 'scale(' + scale + ')';
+                iframe.style.height = (360 / scale) + 'px';
+                iframe.style.width = '100%';
+            }catch(e){ iframe.style.transform = 'scale(0.65)'; iframe.style.height = (360 / 0.65) + 'px'; iframe.style.width = '100%'; }
         } catch (e) {
             console.warn('updateSidebarPreview failed', e);
         }
@@ -1351,7 +1294,7 @@
             blocker.style.top = '0';
             blocker.style.width = '100%';
             blocker.style.height = '75vh';
-            blocker.style.zIndex = '1050';
+            blocker.style.zIndex = '1045';
             blocker.style.background = 'transparent';
             blocker.title = 'Preview interaction blocked to prevent new tabs. Click "Enable interaction" to allow.';
             // small control to allow temporary interaction if user needs it
@@ -1446,11 +1389,15 @@
                 })();
             <\/script>`;
             if (/<head[^>]*>/i.test(originalHtml)) {
-                return originalHtml.replace(/<head([^>]*)>/i, '<head$1>' + sanitizer);
+                // inject sanitizer and enforce light preview styles for readability
+                const lightStyles = '<style>html,body{background:#fff!important;color:#111!important;} table,th,td{color:#111!important;} .totals{background:#fff!important;color:#111!important;border:1px solid #e6e6e6!important;}</style>';
+                return originalHtml.replace(/<head([^>]*)>/i, '<head$1>' + lightStyles + sanitizer);
             } else if (/<body[^>]*>/i.test(originalHtml)) {
-                return originalHtml.replace(/<body([^>]*)>/i, '<body$1>' + sanitizer);
+                const lightStyles = '<style>html,body{background:#fff!important;color:#111!important;} table,th,td{color:#111!important;} .totals{background:#fff!important;color:#111!important;border:1px solid #e6e6e6!important;}</style>';
+                return originalHtml.replace(/<body([^>]*)>/i, '<body$1>' + lightStyles + sanitizer);
             } else {
-                return sanitizer + originalHtml;
+                const lightStyles = '<style>html,body{background:#fff!important;color:#111!important;} table,th,td{color:#111!important;} .totals{background:#fff!important;color:#111!important;border:1px solid #e6e6e6!important;}</style>';
+                return lightStyles + sanitizer + originalHtml;
             }
         }
 
@@ -2122,26 +2069,6 @@
     });
 
 // Ensure Invoice Number updates the live preview in real time
-
-    // Apply a simple sidebar template style so the mini preview visually matches selection
-    function applySidebarTemplateStyle(tpl) {
-        try {
-            const root = document.getElementById('invoice-preview');
-            const mini = document.getElementById('invoice-preview-mini');
-            if (!root) return;
-            // remove previous template-* classes
-            Array.from(root.classList).forEach(c => { if (c && c.startsWith('template-')) root.classList.remove(c); });
-            root.classList.add('template-' + tpl);
-            if (mini) {
-                Array.from(mini.classList).forEach(c => { if (c && c.startsWith('template-')) mini.classList.remove(c); });
-                mini.classList.add('template-' + tpl);
-            }
-            // update dataset for reference
-            try { root.dataset.template = tpl; } catch(e) {}
-            // Re-render the compact preview to reflect the new look
-            try { const d = buildPreviewDataSync(); renderMiniPreview(d); } catch(e) { console.warn('applySidebarTemplateStyle render failed', e); }
-        } catch (e) { /* ignore */ }
-    }
 document.addEventListener('DOMContentLoaded', function() {
     const invInput = document.getElementById('id_invoice_number');
     const dateInput = document.getElementById('id_invoice_date');
@@ -2190,19 +2117,16 @@ document.addEventListener('DOMContentLoaded', function() {
             var tpl = this.dataset.template;
             if (!tpl) return;
             window.SELECTED_TEMPLATE = tpl;
-            // update hidden form value if present
-            try { document.getElementById('id_template').value = window.SELECTED_TEMPLATE; } catch(e) {}
             // update inline template button visual state
-            try {
-                const tplBtns = document.querySelectorAll('.template-btn');
-                tplBtns.forEach(function(b){
+            document.querySelectorAll('.template-btn').forEach(function(b){
+                try{
                     if (b.dataset.template === tpl) {
-                        b.classList.remove('btn-outline-secondary'); b.classList.add('btn-primary');
+                        b.classList.remove('btn-outline-secondary'); b.classList.add('btn-outline-primary');
                     } else {
-                        b.classList.remove('btn-primary'); b.classList.add('btn-outline-secondary');
+                        b.classList.remove('btn-outline-primary'); b.classList.add('btn-outline-secondary');
                     }
-                });
-            } catch(e){}
+                }catch(e){}
+            });
             // attempt to close bootstrap dropdown if available
             try {
                 var dropdownMenu = this.closest('.dropdown-menu');
@@ -2214,10 +2138,6 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 }
             } catch(e){}
-            // trigger preview refresh: schedule server fetch and render
-            try { if (typeof scheduleSidebarUpdate === 'function') scheduleSidebarUpdate(100); } catch(e) {}
-            try { if (document.getElementById('right-preview-drawer') && document.getElementById('right-preview-drawer').classList.contains('open')) { ensureLatestPreviewAndRender(); } } catch(e) {}
-            try { applySidebarTemplateStyle(tpl); } catch(e) {}
             try { updateSidebarPreview(); } catch(e) { console.warn('updateSidebarPreview failed', e); }
         });
     });
@@ -2228,14 +2148,11 @@ document.addEventListener('DOMContentLoaded', function() {
             var tpl = this.dataset.template;
             if (!tpl) return;
             window.SELECTED_TEMPLATE = tpl;
-            try { applySidebarTemplateStyle(tpl); } catch(e) {}
             document.querySelectorAll('.template-btn').forEach(function(bb){
-                if (bb === b) { bb.classList.remove('btn-outline-secondary'); bb.classList.add('btn-primary'); }
-                else { bb.classList.remove('btn-primary'); bb.classList.add('btn-outline-secondary'); }
+                if (bb === b) { bb.classList.remove('btn-outline-secondary'); bb.classList.add('btn-outline-primary'); }
+                else { bb.classList.remove('btn-outline-primary'); bb.classList.add('btn-outline-secondary'); }
             });
-            // ensure hidden form value updated
-            try { document.getElementById('id_template').value = window.SELECTED_TEMPLATE; } catch(e) {}
-            try { updateSidebarPreview(); } catch(e) { console.warn('updateSidebarPreview failed', e); }
+            try { updateSidebarPreview(); } catch(e) {}
         });
     });
     // Wire the quick Templates button to show its dropdown (Bootstrap) and reuse items
@@ -2243,14 +2160,17 @@ document.addEventListener('DOMContentLoaded', function() {
         const quickBtn = document.getElementById('quick-templates-btn');
         const quickMenu = document.getElementById('quick-templates-dropdown');
         if (quickBtn && quickMenu) {
-            // initialize Bootstrap dropdown if available
+            // hook up Bootstrap dropdown if available
             if (typeof bootstrap !== 'undefined' && bootstrap.Dropdown) {
-                new bootstrap.Dropdown(quickBtn, {autoClose:true});
+                const inst = new bootstrap.Dropdown(quickBtn, {autoClose:true});
+                // move the dropdown menu into the DOM near the button for proper positioning
+                quickBtn.parentNode.appendChild(quickMenu);
             }
-            // fallback toggle when Bootstrap JS is not present
-            if (typeof bootstrap === 'undefined') {
-                quickBtn.addEventListener('click', function(e){ quickMenu.classList.toggle('show'); });
-            }
+            // clicking the quick button toggles visibility when no Bootstrap JS
+            quickBtn.addEventListener('click', function(e){
+                // if Bootstrap handled it, let it; otherwise toggle class
+                if (!window.bootstrap) quickMenu.classList.toggle('show');
+            });
         }
     } catch(e) { console.warn('quick templates wiring failed', e); }
 });

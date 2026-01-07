@@ -39,10 +39,10 @@
         <tbody>
           {% for b in businesses %}
           <tr>
-            <td><input type="checkbox" name="selected_ids" value="{{ b.pk }}" class="bp-trash-row" /></td>
-            <td>{{ b.business_name }}</td>
-            <td>{{ b.deleted_at|timezone:"Asia/Manila" }}</td>
-            <td class="text-end">
+            <td data-label="Select"><input type="checkbox" name="selected_ids" value="{{ b.pk }}" class="bp-trash-row" /></td>
+            <td data-label="Business">{{ b.business_name }}</td>
+            <td data-label="Deleted At" class="hide-mobile">{{ b.deleted_at|timezone:"Asia/Manila" }}</td>
+            <td data-label="Actions" class="actions">
               <a href="{% url 'business_restore' b.pk %}" class="btn btn-sm btn-outline-primary">Restore</a>
             </td>
           </tr>

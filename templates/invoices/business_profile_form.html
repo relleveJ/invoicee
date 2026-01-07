@@ -308,5 +308,13 @@
       });
     })();
   </script>
+
+  {# Educational / Resource ad: Help & tips (Canva) #}
+  <div class="mt-4">
+    {% load static %}
+    {% include 'invoices/ads/ad_fragment.html' with ad_id='ad_business_canva_01' placement='help_section' target_url='https://www.canva.com' title='Design invoices with Canva' description='Create branded invoice designs and templates quickly.' logo_url='/static/img/canva.svg' user_context='business_profile_help' invoice_id=None %}
+    <script src="{% static 'js/ad_tracker.js' %}"></script>
+  </div>
+
 </div>
 {% endblock %}

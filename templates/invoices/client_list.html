@@ -14,6 +14,14 @@
       <a href="{% url 'client_create' %}" class="btn btn-primary">Add Client</a>
     </div>
   </div>
+
+  {# Contextual ad in client list header #}
+  {% load static %}
+  <div class="mb-3" style="max-width:420px;">
+    {% include 'invoices/ads/ad_fragment.html' with ad_id='quickbooks_offer' placement='client_list_header' target_url='https://quickbooks.intuit.com' title='Connect with QuickBooks' description='Sync invoices to QuickBooks to simplify accounting.' logo_url='/static/img/quickbooks.svg' user_context='client_list' invoice_id=None %}
+    <script src="{% static 'js/ad_tracker.js' %}"></script>
+  </div>
+
   <div id="clients-list-container" class="table-responsive">
     <form id="client-bulk-form" method="post" action="{% url 'client_bulk_action' %}">{% csrf_token %}
       <div class="d-flex justify-content-between align-items-center mb-2">
@@ -40,13 +48,13 @@
         <tbody>
           {% for client in clients %}
           <tr>
-            <td><input type="checkbox" name="selected_ids" value="{{ client.pk }}" class="client-row-checkbox" /></td>
-            <td><strong>{{ client.name }}</strong></td>
-            <td>{{ client.email }}</td>
-            <td>{{ client.phone }}</td>
-            <td>{{ client.invoices_count|default:0 }}</td>
-            <td>{{ client.total_invoiced|default:"0.00" }}</td>
-            <td class="text-end">
+            <td data-label="Select"><input type="checkbox" name="selected_ids" value="{{ client.pk }}" class="client-row-checkbox" /></td>
+            <td data-label="Name"><strong>{{ client.name }}</strong></td>
+            <td data-label="Email" class="hide-mobile">{{ client.email }}</td>
+            <td data-label="Phone" class="hide-mobile">{{ client.phone }}</td>
+            <td data-label="Invoices">{{ client.invoices_count|default:0 }}</td>
+            <td data-label="Total">{{ client.total_invoiced|default:"0.00" }}</td>
+            <td data-label="Actions" class="actions">
               <a href="{% url 'client_edit' client.pk %}" class="btn btn-sm btn-outline-secondary me-2">Edit</a>
               <button type="button" class="btn btn-sm btn-outline-danger client-delete-btn" data-url="{% url 'client_delete' client.pk %}">Delete</button>
             </td>

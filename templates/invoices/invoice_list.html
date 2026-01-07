@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="container mt-4 invoice-list">
   <div class="d-flex justify-content-between align-items-center mb-3">
     <h2>Invoices</h2>
     <a href="{% url 'invoice_create' %}" class="btn btn-primary">Create Invoice</a>
@@ -35,6 +35,7 @@
           <a href="{% url 'invoice_trash_list' %}" class="btn btn-secondary ms-2">View Trash</a>
         </div>
       </div>
+      <div class="table-responsive">
       <table class="table table-striped">
         <thead>
           <tr>
@@ -51,9 +52,9 @@
         <tbody>
           {% for invoice in invoices %}
           <tr>
-            <td><input type="checkbox" name="selected_ids" value="{{ invoice.pk }}" class="invoice-row-checkbox" /></td>
-            <td>{{ invoice.invoice_number }}</td>
-            <td>
+            <td data-label="Select"><input type="checkbox" name="selected_ids" value="{{ invoice.pk }}" class="invoice-row-checkbox" /></td>
+            <td data-label="Invoice">{{ invoice.invoice_number }}</td>
+            <td data-label="Business">
               {% if invoice.business_logo %}
                 <img src="{{ invoice.business_logo.url }}" alt="{{ invoice.business_name }}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;margin-right:8px;vertical-align:middle;" />
               {% endif %}
@@ -62,11 +63,11 @@
                 {% if invoice.business_email %}<div class="text-muted small">{{ invoice.business_email }}</div>{% endif %}
               </div>
             </td>
-            <td>{{ invoice.client.name }}</td>
-            <td>{{ invoice.invoice_date }}</td>
-            <td>{{ invoice.total_amount }}</td>
-            <td>{{ invoice.get_status_display }}</td>
-            <td>
+            <td data-label="Client">{{ invoice.client.name }}</td>
+            <td data-label="Date" class="hide-mobile">{{ invoice.invoice_date }}</td>
+            <td data-label="Total">{{ invoice.total_amount }}</td>
+            <td data-label="Status" class="hide-mobile">{{ invoice.get_status_display }}</td>
+            <td data-label="Actions" class="actions">
               <a href="{% url 'invoice_detail' invoice.pk %}" class="btn btn-sm btn-outline-primary">View</a>
               <a href="{% url 'invoice_edit' invoice.pk %}" class="btn btn-sm btn-outline-secondary ms-1">Edit</a>
             </td>
@@ -76,9 +77,27 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
     </form>
   </div>
   <script>
+    // Mobile table stacking styles injected inline to avoid dependency on global CSS
+    (function(){
+      const style = document.createElement('style');
+      style.innerHTML = `
+        @media(max-width:767px){
+          .invoice-list table thead { display: none; }
+          .invoice-list table, .invoice-list tbody, .invoice-list tr, .invoice-list td { display: block; width: 100%; }
+          .invoice-list tr { margin-bottom: .6rem; border:1px solid #eef0f2; padding:.6rem; border-radius:6px; }
+          .invoice-list td { padding:.35rem 0; }
+          .invoice-list td[data-label]::before { content: attr(data-label) ": "; font-weight:600; color:#6c757d; display:inline-block; width:40%; }
+          .invoice-list td.hide-mobile { display: none !important; }
+          .invoice-list td.actions { text-align: right; }
+          .invoice-list td.actions .btn { display:block; width:100%; margin-bottom:6px; }
+        }
+      `;
+      document.head.appendChild(style);
+    })();
     (function(){
       const selectAll = document.getElementById('invoice-select-all');
       const form = document.getElementById('invoice-bulk-form');

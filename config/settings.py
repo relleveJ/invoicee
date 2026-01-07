@@ -34,6 +34,9 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+# Allow same-origin framing (needed for embedded invoice previews)
+X_FRAME_OPTIONS = 'SAMEORIGIN'
+
 ROOT_URLCONF = 'config.urls'
 
 TEMPLATES = [
@@ -53,6 +56,17 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+
+# When deployed behind a proxy (like Railway) that terminates SSL, trust the
+# X-Forwarded-Proto header so Django knows the original request scheme.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
+# Trust Railway app domains for CSRF when deployed over HTTPS. Keep DEBUG=True
+# for local dev so these settings don't interfere, but include the wildcard
+# to handle app-hosted domains.
+CSRF_TRUSTED_ORIGINS = [
+    'https://*.railway.app',
+]
 
 # Database
 database_url = os.getenv('DATABASE_URL')
@@ -79,7 +93,8 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
+# Set server timezone to Philippines (Manila) for display and storage
+TIME_ZONE = 'Asia/Manila'
 USE_I18N = True
 USE_TZ = True
 
