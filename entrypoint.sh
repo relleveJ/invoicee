@@ -29,6 +29,7 @@ else
 fi
 
 echo "Running migrations..."
+python manage.py makemigrations --noinput || true
 python manage.py migrate --noinput
 
 echo "Collecting static files..."
